@@ -1,0 +1,29 @@
+# Public Domain (-) 2012 The Planfile App Authors.
+# See the Planfile App UNLICENSE file for details.
+
+generate:
+
+- planfile.js:
+    source: 
+      - raw: |
+          // Public Domain (-) 2012 The Planfile App Authors.
+          // See the Planfile App UNLICENSE file for details.
+      - coffee/planfile.coffee
+
+- gfx/*:
+    source: gfx/*
+    type: binary
+
+- planfile.css:
+    source: 
+      - raw: |
+          /* Public Domain (-) 2012 The Planfile App Authors.
+           * See the Planfile App UNLICENSE file for details. */
+      - sass/planfile.sass
+    
+output.directory: static
+output.hashed: true
+output.manifest: assets.json
+
+css.embed.path.root: gfx
+css.embed.url.base: https://s3.amazonaws.com/espra/gfx

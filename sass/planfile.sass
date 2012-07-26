@@ -1,0 +1,188 @@
+// * General styles
+
+$grey: #777
+$lightgrey: #EFEFEF
+$red: red
+$lightred: #F11
+
+*
+  padding: 0
+  margin: 0
+
+body
+  font-family: Lato, Helvetica, Arial, serif
+
+ol,
+ul,
+li
+  list-style: none
+  color: $grey
+
+.center
+  text-align: center
+  font-weight: 300
+
+// * Layout
+
+.container
+  width: 940px
+  margin: 0 auto
+  clear: both
+  overflow: auto
+
+.columns
+  display: block
+  float: left
+  margin: 0 10px
+  &.one
+    width: 168px
+  &.two
+    width: 336px
+  &.three
+    width: 504px
+  &.four
+    width: 672px
+  &.five
+    width: 840px
+
+// * Site layout
+
+.header
+  margin-bottom: 20px
+
+// * Typography
+
+h1, h2, h3, h4, h5
+  font-weight: 700
+  margin-bottom: 30px
+
+h1
+  font-size: 55px
+
+h2
+  font-size: 45px
+
+h3
+  font-size: 35px
+
+h4
+  font-size: 25px
+
+h5
+  font-size: 15px
+
+p
+  margin-bottom: 20px
+  color: $grey
+  font-weight: 300
+  a
+    text-decoration: none
+    font-style: bold
+    color: $grey
+    font-weight: 700
+
+.content
+  clear: both
+  h1
+    font-size 25px
+
+// * Controls
+
+.button
+  font-weight: 700
+  border-radius: 5px
+  color: #333
+  &.action
+    background: #E9E9E9
+    color: #222
+    padding: 14px 20px
+    border: 1px solid #DFDFDF
+  &.login
+    color: white
+    text-decoration: none
+    padding: 15px 20px 15px 10px
+    background: #01A0EB
+    margin: 20px 0
+    line-height: 39px
+    border-radius: 5px
+    font-weight: 400
+    &:hover
+      background: #02A7F5
+  i
+    background: embed("../gfx/github.png") no-repeat
+    text-indent: -999em
+    display: inline-block
+    width: 33px
+    height: 33px
+    position: relative
+    top: 11px
+    margin-right: 11px
+  span
+    font-weight: 700
+
+.sidebar
+  background: black
+  a
+    color: white
+    text-decoration: none
+    padding: 10px
+    display: block
+    &.red
+      background: red
+      &:hover
+        background: $lightred
+
+.planfiles
+  li
+    padding: 10px
+    margin: 10px 0
+//    border: 1px solid $lightgrey
+//    border-radius: 3px
+
+.editor
+  clear: both
+  textarea
+    width: 652px
+    border-radius: 0 0 3px 3px
+    border: 1px solid #CCC
+    height: 150px
+    margin-bottom: 10px
+    border-top: 0
+    padding: 10px
+    font-size: 13px
+  input
+    &[type=text]
+      width: 652px
+      border: 1px solid #CCC
+      padding: 15px 10px
+      border-radius: 3px 3px 0 0
+      font-size: 13px
+    &[type=submit]
+      cursor: pointer
+  input,
+  textarea
+    color: $grey
+
+  .button
+    float: right
+
+textarea, 
+input
+  outline: none
+
+// * Branding
+
+.logo
+  background: embed("../gfx/logo.png") no-repeat
+  display: block
+  width: 135px
+  height: 93px
+  margin: 20px auto
+  text-indent: -999em
+
+.icon
+  background: embed("../gfx/icon.png") no-repeat
+  display: block
+  width: 55px
+  height: 55px
+  text-indent: -999em

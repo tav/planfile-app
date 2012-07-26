@@ -2,6 +2,7 @@
 
 app/app
 assets.json
+app/config.yaml
 
 gzipped
 static

@@ -26,4 +26,5 @@ output.hashed: true
 output.manifest: assets.json
 
 css.embed.path.root: gfx
-css.embed.url.base: https://s3.amazonaws.com/espra/gfx
+css.embed.only: yes
+css.embed.url.base: /static/

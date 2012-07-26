@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<meta charset="utf-8">
+    <title>{{.Title}} - Planfile</title>
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link href='/static/{{.CSS}}' rel='stylesheet' type='text/css'>
+    <link href='http://fonts.googleapis.com/css?family=Lato:300,400,700' rel='stylesheet' type='text/css'>
+</head>
+<body class="index {{if .User}}loggedin{{end}}">
+    {{if .User}}
+     <div class="container header">
+        <div class="">
+            <div class="center message">
+                <a href="/" class="logo">Planfile</a>
+            </div>
+        </div>
+    </div>
+    <div class="container">
+        <div class="one columns">
+            <div class="sidebar">
+                <a href="http://github.com/{{.User.Login}}" target="_blank" class="grey">{{.User.Name}}</a>
+                <a href="/logout" class="red">Log out</a>
+            </div>
+        </div>
+        <div class="four columns">
+            <div class="editor">
+                  <h3>Create a new entry</h3>
+                <form action="." method="post">
+                    <input type="hidden" value="{{.CSRF}}" name="crsf_token">
+                    <input type="text" name="filename" placeholder="File name">
+                    <textarea name="entry" placeholder="Content"></textarea>
+                    <select name="planfile">
+                      <option value="1">Item #1</option>
+                    </select>
+                    <input type="submit" value="Save new entry" class="action button">
+                </form>
+            </div>
+            <div class="content">
+                <h3>Here are your planfiles</h3>
+                <ul class="planfiles">
+                  <li>Espra</li>
+                  <li>Hub management app</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    {{else}}
+     <div class="container">
+        <div class="">
+            <div class="center message">
+                <a href="/" class="logo">Planfile</a>
+                <h1>Git-based project planning and dependency management</h1>
+                <p><a href='/login' class="login button"><i></i>Log in with <span>GitHub</span></a></p>
+                <p>Powered by <a href='http://ampify.it' class="">Ampify</a></p>
+            </div>
+        </div>
+    </div>
+   {{end}}
+    <script type="text/javascript" src="/static/{{.JS}}"></script>
+</body>
+</html>

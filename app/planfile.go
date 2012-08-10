@@ -4,224 +4,153 @@
 package main
 
 import (
+	"amp/crypto"
+	"amp/log"
 	"amp/oauth"
+	"amp/runtime"
 	"amp/yaml"
-	"bufio"
-	"bytes"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html/template"
-	"io"
 	"io/ioutil"
-	"log"
-	"math/big"
 	"net/http"
 	"os"
-	"strconv"
+	"strings"
+	"sync"
 )
-
-const (
-	STATIC_DIR     = "../static"
-	ASSETS_JSON    = "../assets.json"
-	GITHUB_URL     = "https://api.github.com/"
-	SESSION_COOKIE = "planfile_session_id"
-	TEMPLATES_DIR  = "../templates"
-)
-
-var userSessions = map[string]bool{}
-var usersLoggedIn = map[string]*User{}
-var userTokens = map[string]*oauth.Token{}
-
-// Returns a securely generated random string.
-func getRandomString(l int) string {
-	allowedChars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	var buffer bytes.Buffer
-	for i := 0; i < l; i++ {
-		j, _ := rand.Int(rand.Reader, big.NewInt(int64(len(allowedChars))))
-		buffer.WriteString(string(allowedChars[j.Int64()]))
-	}
-	return buffer.String()
-}
-
-// -----------------------------------------------------------------------------
-// Asset loader
-// -----------------------------------------------------------------------------
-
-type Assets struct {
-	CSS string `json:"planfile.css"`
-	JS  string `json:"planfile.js"`
-}
-
-var assets = Assets{}
-
-func loadAssets(path string) Assets {
-	file, err := os.Open(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	reader := bufio.NewReader(file)
-	b, err := ioutil.ReadAll(reader)
-	if err != nil {
-		log.Fatal(err)
-	}
-	assets := Assets{}
-	json.Unmarshal(b, &assets)
-	return assets
-}
-
-// -----------------------------------------------------------------------------
-// Templates
-// -----------------------------------------------------------------------------
-
-var templates = template.Must(template.ParseFiles(TEMPLATES_DIR+"/index.html", TEMPLATES_DIR+"/plan.html"))
-
-func renderTemplate(w http.ResponseWriter, tmpl string, c interface{}) {
-	err := templates.ExecuteTemplate(w, tmpl+".html", c)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// -----------------------------------------------------------------------------
-// Core web app
-// -----------------------------------------------------------------------------
 
 type Config struct {
-	Debug               bool
+	CookieKey           string
 	GoogleAnalyticsHost string
 	GoogleAnalyticsID   string
-	LocalDirectory      string
 	OAuthClientID       string
 	OAuthClientSecret   string
 	Repository          string
-	UseLocal            bool
-	TypekitID           string
+	SecureMode          bool
 	RedirectURL         string
 }
 
-var config = &Config{}
+type Context struct {
+	r      *http.Request
+	w      http.ResponseWriter
+	secret []byte
+	secure bool
+	token  *oauth.Token
+}
 
-var service = &oauth.OAuthService{}
-
-// Set session cookie if it doesn't exist
-func setSessionIDCookie(w http.ResponseWriter, r *http.Request) (string, error) {
-	id, err := r.Cookie(SESSION_COOKIE)
+func (ctx *Context) Call(path string, v interface{}) error {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", "https://api.github.com"+path, nil)
 	if err != nil {
-		randID := getRandomString(16)
-		c := &http.Cookie{Name: SESSION_COOKIE, Value: randID}
-		http.SetCookie(w, c)
-		userSessions[randID] = true
-		userTokens[randID] = &oauth.Token{}
-		return randID, nil
+		return err
 	}
-	return id.Value, nil
-}
-
-// Index
-func index(w http.ResponseWriter, r *http.Request) {
-	sessionID, _ := setSessionIDCookie(w, r)
-	_, ok := usersLoggedIn[sessionID]
-	if userSessions[sessionID] && ok {
-		//		csrfToken := r.FormValue("crsf_token")
-		//		title := r.FormValue("title")
-		entry := r.FormValue("entry")
-		//		planfileID := r.FormValue("planfile")
-		//fmt.Println(csrfToken, title, getGitSHA(entry), planfileID)
-		userToken := userTokens[sessionID]
-		user := fetchUser(userToken)
-		sha := githubBlobsCreate(userToken, user.Login, "planfile", entry)
-		fmt.Println("sha: ", sha)
-		page := struct {
-			CSS   string
-			JS    string
-			CSRF  string
-			Title string
-			User  *User
-		}{
-			assets.CSS,
-			assets.JS,
-			"",
-			"Hi",
-			user,
-		}
-		renderTemplate(w, "index", page)
-	} else {
-		page := struct {
-			CSS   string
-			JS    string
-			CSRF  string
-			Title string
-			User  *User
-		}{
-			assets.CSS,
-			assets.JS,
-			"",
-			"Welcome to Planfile",
-			nil,
-		}
-		renderTemplate(w, "index", page)
-	}
-}
-
-// Load session identifier and redirect to OAuth backend
-func login(w http.ResponseWriter, r *http.Request) {
-	id, err := r.Cookie(SESSION_COOKIE)
-	if err == nil {
-		http.Redirect(w, r, service.AuthCodeURL(id.Value), http.StatusFound)
-	}
-}
-
-// OAuth redirect URL.
-func authenticate(w http.ResponseWriter, r *http.Request) {
-	t := &oauth.Transport{OAuthService: service}
-	id, err := r.Cookie(SESSION_COOKIE)
-	if err == nil && r.FormValue("state") == id.Value {
-		tok, err := t.ExchangeAuthorizationCode(r.FormValue("code"))
+	if ctx.token == nil {
+		tok, err := hex.DecodeString(ctx.GetCookie("token"))
 		if err != nil {
-			log.Fatal("ERROR: ", err)
+			ctx.ExpireCookie("token")
+			return err
 		}
-		userSessions[id.Value] = true
-		userTokens[id.Value] = tok
-		user := fetchUser(userTokens[id.Value])
-		usersLoggedIn[id.Value] = user
+		err = json.Unmarshal(tok, ctx.token)
+		if err != nil {
+			ctx.ExpireCookie("token")
+			return err
+		}
 	}
-	http.Redirect(w, r, "/", http.StatusFound)
+	req.Header.Add("Authorization", "bearer "+ctx.token.AccessToken)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(v)
+	return err
 }
 
-// Log out user
-func logout(w http.ResponseWriter, r *http.Request) {
-	id, err := r.Cookie(SESSION_COOKIE)
+func (ctx *Context) Error(s string, err error) {
+	log.Error("%s: %s", s, err)
 	if err == nil {
-		delete(userSessions, id.Value)
-		delete(userTokens, id.Value)
-		delete(usersLoggedIn, id.Value)
+		fmt.Fprintf(ctx, "ERROR: %s", s)
+	} else {
+		fmt.Fprintf(ctx, "ERROR: %s: %s", s, err)
 	}
-	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-// Planfile loading URL
-func plan(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Plan")
+func (ctx *Context) ExpireCookie(attr string) {
+	http.SetCookie(ctx.w, &http.Cookie{Name: attr, MaxAge: -1, Secure: ctx.secure})
 }
 
-// -----------------------------------------------------------------------------
-// URL Routes
-// -----------------------------------------------------------------------------
+func (ctx *Context) FormValue(attr string) string {
+	return ctx.r.FormValue(attr)
+}
+
+func (ctx *Context) GetCookie(attr string) string {
+	cookie, err := ctx.r.Cookie(attr)
+	if err != nil {
+		return ""
+	}
+	val, ok := crypto.GetIronValue(attr, cookie.Value, ctx.secret, false)
+	if ok {
+		return val
+	}
+	return ""
+}
+
+func (ctx *Context) Redirect(path string) {
+	http.Redirect(ctx.w, ctx.r, path, http.StatusFound)
+}
+
+func (ctx *Context) SetCookie(attr, val string) {
+	http.SetCookie(ctx.w, &http.Cookie{
+		Name:   attr,
+		Value:  crypto.IronString(attr, val, ctx.secret, -1),
+		MaxAge: 0,
+		Secure: ctx.secure,
+	})
+}
+
+func (ctx *Context) SetHeader(attr, val string) {
+	ctx.w.Header().Set(attr, val)
+}
+
+func (ctx *Context) Write(data []byte) (int, error) {
+	return ctx.w.Write(data)
+}
+
+func IsEqual(x, y []byte) bool {
+	if len(x) != len(y) {
+		return false
+	}
+	return subtle.ConstantTimeCompare(x, y) == 1
+}
+
+func ReadFile(path string) []byte {
+	c, err := ioutil.ReadFile(path)
+	if err != nil {
+		runtime.StandardError(err)
+	}
+	return c
+}
+
+type User struct {
+	Login     string `json:"login"`
+	AvatarURL string `json:"avatar_url"`
+}
 
 func main() {
 
-	cfg, err := yaml.ParseFile("config.yaml")
+	log.AddConsoleLogger()
+	data, err := yaml.ParseFile("config.yaml")
 	if err != nil {
-		log.Fatal("ERROR: couldn't parse the config file: ", err)
-	}
-	cfg.LoadStruct(config)
-	if config.LocalDirectory != "" {
-		config.UseLocal = true
+		runtime.StandardError(err)
 	}
 
-	service = &oauth.OAuthService{
+	config := &Config{}
+	data.LoadStruct(config)
+
+	service := &oauth.OAuthService{
 		ClientID:     config.OAuthClientID,
 		ClientSecret: config.OAuthClientSecret,
 		Scope:        "public_repo",
@@ -231,85 +160,133 @@ func main() {
 		AcceptHeader: "application/json",
 	}
 
-	assets = loadAssets(ASSETS_JSON)
-	http.HandleFunc("/", index)
-	http.HandleFunc("/login", login)
-	http.HandleFunc("/logout", logout)
-	http.HandleFunc("/oauth", authenticate)
-	http.HandleFunc("/plan", plan)
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("../static/"))))
-	fmt.Println("LISTENING...")
+	assets := map[string]string{}
+	json.Unmarshal(ReadFile("assets.json"), &assets)
 
-	err = http.ListenAndServe(":"+os.Getenv("PORT"), nil)
+	indexHead := ReadFile("templates/index.html")
+	mutex := sync.RWMutex{}
+	secret := []byte(config.CookieKey)
+	tarURL := "https://github.com/" + config.Repository + "/tarball/master"
+
+	register := func(path string, handler func(*Context)) {
+		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			ctx := &Context{
+				r:      r,
+				w:      w,
+				secret: secret,
+				secure: config.SecureMode,
+			}
+			ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
+			handler(ctx)
+		})
+	}
+
+	register("/", func(ctx *Context) {
+		mutex.RLock()
+		defer mutex.RUnlock()
+		if ctx.r.URL.Path != "/" {
+			http.NotFound(ctx.w, ctx.r)
+			return
+		}
+		ctx.Write(indexHead)
+		ctx.Write([]byte("Hello <strong>foo</strong>. " + tarURL + " " + ctx.GetCookie("user")))
+	})
+
+	register("/login", func(ctx *Context) {
+		b := make([]byte, 20)
+		if n, err := rand.Read(b); err != nil || n != 20 {
+			ctx.Error("Couldn't access cryptographic device", err)
+			return
+		}
+		s := hex.EncodeToString(b)
+		ctx.SetCookie("state", s)
+		ctx.Redirect(service.AuthCodeURL(s))
+	})
+
+	register("/logout", func(ctx *Context) {
+		ctx.ExpireCookie("token")
+		ctx.ExpireCookie("user")
+		ctx.Redirect("/")
+	})
+
+	register("/oauth", func(ctx *Context) {
+		s := ctx.FormValue("state")
+		if s == "" {
+			ctx.Redirect("/login")
+			return
+		}
+		if !IsEqual([]byte(s), []byte(ctx.GetCookie("state"))) {
+			ctx.ExpireCookie("state")
+			ctx.Redirect("/login")
+			return
+		}
+		ctx.ExpireCookie("state")
+		t := &oauth.Transport{OAuthService: service}
+		tok, err := t.ExchangeAuthorizationCode(ctx.FormValue("code"))
+		if err != nil {
+			ctx.Error("Auth Exchange Error", err)
+			return
+		}
+		jtok, err := json.Marshal(tok)
+		if err != nil {
+			ctx.Error("Couldn't encode token", err)
+			return
+		}
+		ctx.SetCookie("token", hex.EncodeToString(jtok))
+		ctx.token = tok
+		user := &User{}
+		err = ctx.Call("/user", user)
+		if err != nil {
+			ctx.Error("Couldn't load user info", err)
+			return
+		}
+		ctx.SetCookie("user", user.Login)
+		ctx.Redirect("/")
+	})
+
+	register("/refresh", func(ctx *Context) {
+		mutex.Lock()
+		defer mutex.Unlock()
+		ctx.Write([]byte("OK."))
+	})
+
+	mimetypes := map[string]string{
+		"css":  "text/css",
+		"gif":  "image/gif",
+		"ico":  "image/x-icon",
+		"jpeg": "image/jpeg",
+		"jpg":  "image/jpeg",
+		"js":   "text/javascript",
+		"png":  "image/png",
+		"txt":  "text/plain",
+	}
+
+	registerStatic := func(filepath, urlpath string) {
+		content := ReadFile(filepath)
+		split := strings.Split(filepath, ".")
+		ctype, ok := mimetypes[split[len(split)-1]]
+		if !ok {
+			ctype = "application/octet-stream"
+		}
+		register(urlpath, func(ctx *Context) {
+			ctx.SetHeader("Content-Type", ctype)
+			ctx.Write(content)
+		})
+	}
+
+	for _, path := range assets {
+		registerStatic("static/"+path, "/static/"+path)
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8888"
+	}
+
+	log.Info("Listening on port %s", port)
+	err = http.ListenAndServe(":"+port, nil)
 	if err != nil {
-		log.Fatal("ERROR: couldn't bind to tcp socket: ", err)
+		runtime.Error("couldn't bind to tcp socket: %s", err)
 	}
 
-}
-
-// -----------------------------------------------------------------------------
-// GitHub API functions
-// -----------------------------------------------------------------------------
-
-func makeGitHubCall(t *oauth.Token, req *http.Request) *bytes.Buffer {
-	client := &http.Client{}
-	req.Header.Add("Authorization", "bearer "+t.AccessToken)
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal("Error: ", err)
-	}
-	defer resp.Body.Close()
-	buf := &bytes.Buffer{}
-	io.Copy(buf, resp.Body)
-	return buf
-}
-
-type User struct {
-	Id        int    `json:"id"`
-	Login     string `json:"login"`
-	AvatarURL string `json:"avatar_url"`
-	Name      string `json:"name"`
-}
-
-func fetchUser(t *oauth.Token) *User {
-	u := &User{}
-	req, _ := http.NewRequest("GET", GITHUB_URL+"user", nil)
-	buf := makeGitHubCall(t, req)
-	json.Unmarshal(buf.Bytes(), &u)
-	return u
-}
-
-func githubBlobsCreate(t *oauth.Token, user, repo, content string) string {
-	blob := struct {
-		Content  string `json:"content"`
-		Encoding string `json:"encoding"`
-	}{
-		content,
-		"utf-8",
-	}
-	buf := &bytes.Buffer{}
-	resp := struct {
-		Sha string
-	}{}
-	b, _ := json.Marshal(blob)
-	io.Copy(buf, bytes.NewBuffer(b))
-	URL := GITHUB_URL + "repos/" + user + "/" + repo + "/git/blobs"
-	fmt.Println("URL: ", URL)
-	req, _ := http.NewRequest("POST", URL, buf)
-	fmt.Println("buf: ", buf.String())
-	req.Header.Set("Content-Type", "application/json")
-	buf2 := makeGitHubCall(t, req)
-	fmt.Println("buf2: ", buf2.String())
-	json.Unmarshal(buf2.Bytes(), &resp)
-	return resp.Sha
-}
-
-// -----------------------------------------------------------------------------
-// Git functions
-// -----------------------------------------------------------------------------
-
-func getGitSHA(data string) string {
-	h := sha1.New()
-	io.WriteString(h, "blob "+strconv.Itoa(len(data)+1)+"\x00"+data+"\n")
-	return fmt.Sprintf("% x", h.Sum(nil))
 }

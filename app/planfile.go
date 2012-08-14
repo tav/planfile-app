@@ -188,9 +188,10 @@ func main() {
 			return
 		}
 		ctx.Write(indexHead)
-		ctx.Write([]byte("<link href='/static/" + assets["planfile.css"]+ "' rel='stylesheet' type='text/css'>" + 
-		"<script src='/static/" + assets["planfile.js"]+ "' type='text/javascript'></script>"))
-		ctx.Write([]byte("<body data-user='" + ctx.GetCookie("user") + "'>"))
+		ctx.Write([]byte("<link href='/static/" + assets["planfile.css"] + "' rel='stylesheet' type='text/css'></head>" +
+			"<body data-user='" + ctx.GetCookie("user") + "'>" +
+			"<script src='/static/" + assets["planfile.js"] + "' type='text/javascript'></script></body>"))
+		
 	})
 
 	register("/login", func(ctx *Context) {

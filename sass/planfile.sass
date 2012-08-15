@@ -61,19 +61,19 @@ li
 
 h1, h2, h3, h4, h5
   font-weight: 700
-  margin-bottom: 30px
+  margin-bottom: 15px
 
 h1
-  font-size: 55px
-
-h2
-  font-size: 45px
-
-h3
   font-size: 35px
 
-h4
+h2
+  font-size: 28px
+
+h3
   font-size: 25px
+
+h4
+  font-size: 20px
 
 h5
   font-size: 15px
@@ -193,19 +193,17 @@ input
       width: 25px
   div  
     display: none
-    position: absolute
-    top: 55px
     background: inherit    
-    padding: 11px 27px 11px 24px  
     border-top-right-radius: 0
     border-top-left-radius: 0
     border-bottom-left-radius: 3px
-    border-bottom-right-radius: 3px    
+    border-bottom-right-radius: 3px
+    margin-left: 10px    
     a
       color: inherit
       text-decoration: none
   &:hover div
-    display: block
+    display: inline-block
 
 p.title
   font-size: 16px
@@ -215,8 +213,10 @@ p.title
   margin: 0
 
 .planfiles
-  width: 960px
-  padding: 0
+  .entry
+    margin-bottom: 30px  
+    .tags
+      color: $lightgrey    
   ul
     li
       padding: 10px

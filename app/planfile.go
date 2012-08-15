@@ -9,11 +9,17 @@ import (
 	"amp/oauth"
 	"amp/runtime"
 	"amp/yaml"
+	"archive/tar"
+	"bufio"
+	"bytes"
+	"compress/gzip"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/russross/blackfriday"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -38,6 +44,11 @@ type Context struct {
 	secret []byte
 	secure bool
 	token  *oauth.Token
+}
+
+type file struct {
+	name    string
+	content []string
 }
 
 func (ctx *Context) Call(path string, v interface{}) error {
@@ -134,6 +145,55 @@ func ReadFile(path string) []byte {
 	return c
 }
 
+func LoadRepository(path string) []file {
+	client := &http.Client{}
+	resp, err := client.Get(path)
+	if err != nil {
+		runtime.StandardError(err)
+	}
+	defer resp.Body.Close()
+	zf, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		runtime.StandardError(err)
+	}
+	tr := tar.NewReader(zf)
+	repo := []file{}
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			runtime.StandardError(err)
+		}
+		splitDot := strings.Split(hdr.Name, ".")
+		splitSlash := strings.Split(hdr.Name, "/")
+		// Check if the file ends with .md
+		ending := splitDot[len(splitDot)-1:]
+		if ending[0] == "md" {
+			var lines []string
+			var part []byte
+			var prefix bool
+			filename := splitSlash[len(splitSlash)-1:]
+			reader := bufio.NewReader(tr)
+			buffer := bytes.NewBuffer(make([]byte, 0))
+			for {
+				if part, prefix, err = reader.ReadLine(); err != nil {
+					break
+				}
+				buffer.Write(part)
+				if !prefix {
+					lines = append(lines, buffer.String())
+					buffer.Reset()
+				}
+
+			}
+			repo = append(repo, file{filename[0], lines})
+		}
+	}
+	return repo
+}
+
 type User struct {
 	Login     string `json:"login"`
 	AvatarURL string `json:"avatar_url"`
@@ -166,6 +226,59 @@ func main() {
 	indexHead := ReadFile("templates/index.html")
 	mutex := sync.RWMutex{}
 	secret := []byte(config.CookieKey)
+	tarURL := "https://github.com/" + config.Repository + "/tarball/master"
+
+	saveRepo := func(name string, repo []file, repos map[string][]file) {
+		mutex.Lock()
+		repos[name] = repo
+		mutex.Unlock()
+	}
+
+	// Store repository in map 	
+	repos := map[string][]file{}
+
+	log.Info("Loading repository: %s", tarURL)
+	repo := LoadRepository(tarURL)
+	saveRepo(config.Repository, repo, repos)
+	log.Info("DONE")
+
+	parseTags := func(lines []string) (tags map[string]string, content []string) {
+		tags = make(map[string]string)
+		for i, l := range lines {
+			if strings.Trim(l, " ") == "---" {
+				j := i + 1
+				for strings.Trim(lines[j], "") != "---" && j < len(lines)-1 {
+					tl := strings.Split(lines[j], ":")
+					tags[tl[0]] = tl[1]
+					j++
+				}
+				content = lines[j+1:]
+				break
+			}
+		}
+		return
+	}
+
+	// Build a planfile from a list of files
+	buildPlanfile := func(repo []file) (pf string) {
+		var rf, e, a string
+		for _, f := range repo {
+			tags, content := parseTags(f.content)
+			a = "<div class='tags'>" + tags["tags"] + "</div>"
+			entry := strings.Join(content, "\n")
+			e = string(blackfriday.MarkdownBasic([]byte(entry)))
+			if strings.ToLower(f.name) == "readme.md" {
+				rf = "<div class='entry readme'>" + e + a + "</div>"
+			} else {
+				pf += "<div class='entry'>" + e + a + "</div>"
+			}
+		}
+		pf = rf + pf
+		return
+	}
+
+	log.Info("Building planfile")
+	pf := buildPlanfile(repos[config.Repository])
 
 	register := func(path string, handler func(*Context)) {
 		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -187,11 +300,23 @@ func main() {
 			http.NotFound(ctx.w, ctx.r)
 			return
 		}
+
 		ctx.Write(indexHead)
+		var header string
+		username := ctx.GetCookie("user")
+		avatarURL := ctx.GetCookie("avatar-url")
+		if username != "" {
+			header = "<div class='container header'><div class='logo'><a id='logo'>planfile</a></div>" +
+				"<div class='user_controls'><a id='user'><img src='" + avatarURL + "'><span>" + username + 
+				"</span></a><div><a href='/logout' id='logout'>Log out</a></div></div></div>"
+		} else {
+			header = "<div class='container header'><a href='/login' class='button login'>Log in with GitHub</a></div>"
+		}
 		ctx.Write([]byte("<link href='/static/" + assets["planfile.css"] + "' rel='stylesheet' type='text/css'></head>" +
 			"<body data-user='" + ctx.GetCookie("user") + "'>" +
-			"<script src='/static/" + assets["planfile.js"] + "' type='text/javascript'></script></body>"))
-		
+			"<div id='body'><div id='home'>" + header +"<div class='container planfiles'>" + pf +
+			"</div></div><script src='/static/" + assets["planfile.js"] + "' type='text/javascript'></script></body>"))
+
 	})
 
 	register("/login", func(ctx *Context) {
@@ -243,6 +368,7 @@ func main() {
 			return
 		}
 		ctx.SetCookie("user", user.Login)
+		ctx.SetCookie("avatar-url", user.AvatarURL)
 		ctx.Redirect("/")
 	})
 

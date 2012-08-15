@@ -307,14 +307,14 @@ func main() {
 		avatarURL := ctx.GetCookie("avatar-url")
 		if username != "" {
 			header = "<div class='container header'><div class='logo'><a id='logo'>planfile</a></div>" +
-				"<div class='user_controls'><a id='user'><img src='" + avatarURL + "'><span>" + username + 
+				"<div class='user_controls'><a id='user'><img src='" + avatarURL + "'><span>" + username +
 				"</span></a><div><a href='/logout' id='logout'>Log out</a></div></div></div>"
 		} else {
 			header = "<div class='container header'><a href='/login' class='button login'>Log in with GitHub</a></div>"
 		}
 		ctx.Write([]byte("<link href='/static/" + assets["planfile.css"] + "' rel='stylesheet' type='text/css'></head>" +
 			"<body data-user='" + ctx.GetCookie("user") + "'>" +
-			"<div id='body'><div id='home'>" + header +"<div class='container planfiles'>" + pf +
+			"<div id='body'><div id='home'>" + header + "<div class='container planfiles'>" + pf +
 			"</div></div><script src='/static/" + assets["planfile.js"] + "' type='text/javascript'></script></body>"))
 
 	})

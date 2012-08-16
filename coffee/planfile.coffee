@@ -20,7 +20,39 @@ define 'planfile', (exports, root) ->
   exports.auth = auth = ->
     if getLogin() == '' then false else true
 
+  buildTags = ->
+    tagMenu = doc.createElement 'div'
+    tagMenu.setAttribute 'class', 'container tag-menu'
+    tagList = doc.querySelector('article input[type="hidden"]').value
+    for tag in tagList.trim().split(" ")
+      do (tag) ->
+        tagElem = document.createElement('a')
+        tagElem.href = '#'
+        tagText = tag.replace('tag-user-', '@').replace('tag-label-', '#')
+        tagElem.textContent = tagText
+        tagElem.setAttribute 'class', tag
+        clicked = false
+        tagElem.onclick = (e) ->
+          style = ''
+          tClass = ''
+          if !clicked
+            style = 'display: none;'
+            tClass = "clicked "
+          targets = doc.querySelectorAll('section.' + tag)
+          for target in targets
+            do (target) ->
+              oldStyle = target.getAttribute('style')
+              target.setAttribute 'style', style
+          @.setAttribute('class', tClass + @.getAttribute('class').replace('clicked', ''))
+          clicked = !clicked
+          e.preventDefault()
+          return false
+        tagMenu.appendChild tagElem
+    header = doc.querySelector '.header'
+    header.insertAdjacentElement 'afterend', tagMenu
+
   exports.run = ->
+    buildTags()
     if auth()
       showIndexLoggedIn()
     else

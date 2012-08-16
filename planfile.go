@@ -237,10 +237,8 @@ func main() {
 	// Store repository in map 	
 	repos := map[string][]file{}
 
-	log.Info("Loading repository: %s", tarURL)
 	repo := LoadRepository(tarURL)
 	saveRepo(config.Repository, repo, repos)
-	log.Info("DONE")
 
 	parseTags := func(lines []string) (tags map[string]string, content []string) {
 		tags = make(map[string]string)
@@ -259,25 +257,52 @@ func main() {
 		return
 	}
 
-	// Build a planfile from a list of files
-	buildPlanfile := func(repo []file) (pf string) {
-		var rf, e, a string
-		for _, f := range repo {
-			tags, content := parseTags(f.content)
-			a = "<div class='tags'>" + tags["tags"] + "</div>"
-			entry := strings.Join(content, "\n")
-			e = string(blackfriday.MarkdownBasic([]byte(entry)))
-			if strings.ToLower(f.name) == "readme.md" {
-				rf = "<div class='entry readme'>" + e + a + "</div>"
-			} else {
-				pf += "<div class='entry'>" + e + a + "</div>"
-			}
+	generateTags := func(t string) (tags string) {
+		t = strings.Trim(t, "  ")
+		ts := strings.Split(t, " ")
+		for _, c := range ts {
+			tags += "<span data-tag-link='" + c + "'>" + c + "</span>"
 		}
-		pf = rf + pf
 		return
 	}
 
-	log.Info("Building planfile")
+	generateTagClasses := func(t string) string {
+		t = strings.Trim(t, "  ")
+		t = strings.Replace(t, "@", "tag-user-", -1)
+		t = strings.Replace(t, "#", "tag-label-", -1)
+		return t
+	}
+
+	// Build a planfile from a list of files
+	buildPlanfile := func(repo []file) (pf string) {
+		var rf, e, a string
+		var tagList string
+		for _, f := range repo {
+			tags, content := parseTags(f.content)
+			ts := generateTags(tags["tags"])
+			tsc := generateTagClasses(tags["tags"])
+			tsl := strings.Split(tsc, " ")
+			for _, t := range tsl {
+				if !strings.Contains(tagList, t) {
+					tagList += " " + t
+				}
+			}
+			a = "<div class='tags'><a class='edit' href='#'>Edit</a>" + ts + "</div>"
+			original := strings.Join(f.content, "\n")
+			entry := strings.Join(content, "\n")
+			form := "<form action='.' method='post' style='display:none;'><textarea name='content'>" + original +
+				"</textarea><input type='hidden' value='" + f.name + "'/></form>"
+			e = string(blackfriday.MarkdownBasic([]byte(entry)))
+			if strings.ToLower(f.name) == "readme.md" {
+				rf = "<section class='entry readme " + tsc + "'>" + e + a + form + "</section>"
+			} else {
+				pf += "<section class='entry " + tsc + "'>" + e + a + form + "</section>"
+			}
+		}
+		pf = "<input type='hidden' value='" + tagList + "'/>" + rf + pf
+		return
+	}
+
 	pf := buildPlanfile(repos[config.Repository])
 
 	register := func(path string, handler func(*Context)) {
@@ -313,9 +338,9 @@ func main() {
 			header = "<div class='container header'><a href='/login' class='button login'>Log in with GitHub</a></div>"
 		}
 		ctx.Write([]byte("<link href='/static/" + assets["planfile.css"] + "' rel='stylesheet' type='text/css'></head>" +
-			"<body data-user='" + ctx.GetCookie("user") + "'>" +
-			"<div id='body'><div id='home'>" + header + "<div class='container planfiles'>" + pf +
-			"</div></div><script src='/static/" + assets["planfile.js"] + "' type='text/javascript'></script></body>"))
+			"<body data-user='" + username + "'>" + "<div id='body'><div id='home'>" + header +
+			"<article class='container planfiles'>" + pf + "</article></div><script src='/static/" + assets["planfile.js"] +
+			"' type='text/javascript'></script></body>"))
 
 	})
 

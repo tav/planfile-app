@@ -5,6 +5,7 @@ $lightgrey: #EFEFEF
 $red: red
 $lightred: #F11
 $blue: #01A0EB
+$lightblue: #08B0FF
 
 *
   padding: 0
@@ -212,11 +213,52 @@ p.title
   background: white
   margin: 0
 
+.tag-menu
+  a
+    color: #B1B1B1
+    text-decoration: none
+    background: #F8F8F8
+    padding: 4px 9px
+    border-radius: 13px
+    font-weight: bold
+    font-size: 12px
+    margin-right: 10px
+    float: right
+    display: inline-block
+    &.clicked
+      background: #A1A1A1
+      color: white
+
 .planfiles
-  .entry
+  .entry  
     margin-bottom: 30px  
     .tags
-      color: $lightgrey    
+      clear: both
+      overflow: auto
+      a
+        background: #F8F8F8
+        text-decoration: none
+        color: #999
+        border-radius: 3px
+        padding: 4px 5px
+        font-size: 10px
+        float: left
+        display: none
+      span
+        color: #818181
+        text-decoration: none
+        padding: 4px 6px
+        background: #EEE
+        margin-right: 10px
+        border-radius: 3px
+        font-size: 10px
+        float: right
+        &[data-tag-link*="@"]
+          background: $red
+          color: white  
+        &[data-tag-link*="#"]
+          background: $lightblue
+          color: white  
   ul
     li
       padding: 10px

@@ -61,7 +61,6 @@ define 'planfile', (exports, root) ->
               if searchAll(oldClass, activeTags) == activeTags.length
                 target.setAttribute 'style', ''
               else
-                oldStyle = target.getAttribute 'style'
                 target.setAttribute 'style', 'display: none;'
           @.setAttribute('class', tClass + @.getAttribute('class').replace('clicked', ''))
           clicked[tag] = !clicked[tag]

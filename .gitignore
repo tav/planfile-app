@@ -40,6 +40,7 @@ gfx/logo.png
 *.jar
 *.la
 *.lo
+*.log
 *.o
 *.out
 *.pyc

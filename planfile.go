@@ -169,7 +169,7 @@ func LoadRepository(path string) []file {
 			var prefix bool
 			filename := splitSlash[len(splitSlash)-1:]
 			reader := bufio.NewReader(tr)
-			buffer := bytes.NewBuffer(make([]byte, 0))
+			buffer := &bytes.Buffer{}
 			for {
 				if part, prefix, err = reader.ReadLine(); err != nil {
 					break

@@ -24,27 +24,47 @@ define 'planfile', (exports, root) ->
     tagMenu = doc.createElement 'div'
     tagMenu.setAttribute 'class', 'container tag-menu'
     tagList = doc.querySelector('article input[type="hidden"]').value
+    active = ''
+    clicked = {}
     for tag in tagList.trim().split(" ")
       do (tag) ->
-        tagElem = document.createElement('a')
+        tagElem = document.createElement 'a'
         tagElem.href = '#'
         tagText = tag.replace('tag-user-', '@').replace('tag-label-', '#')
         tagElem.textContent = tagText
         tagElem.setAttribute 'class', tag
-        clicked = false
+        clicked[tag] = false
         tagElem.onclick = (e) ->
-          style = ''
           tClass = ''
-          if !clicked
-            style = 'display: none;'
-            tClass = "clicked "
-          targets = doc.querySelectorAll('section.' + tag)
+          if !clicked[tag]
+            tClass = 'clicked '
+            active = active.trim() + " " + tag
+          else
+            active = active.replace tag, ''
+          search = (source, token) ->
+            if source.search token > -1
+              console.log 'found string'
+              return 0
+            return -1
+          activeTags = active.trim().split(" ")
+          searchAll = (target, items) ->
+            count = 0
+            for item in items
+              do (item) ->
+                if target.search(item) > -1
+                  count += 1
+            count
+          targets = doc.querySelectorAll 'section'
           for target in targets
             do (target) ->
-              oldStyle = target.getAttribute('style')
-              target.setAttribute 'style', style
+              oldClass = target.getAttribute 'class'
+              if searchAll(oldClass, activeTags) == activeTags.length
+                target.setAttribute 'style', ''
+              else
+                oldStyle = target.getAttribute 'style'
+                target.setAttribute 'style', 'display: none;'
           @.setAttribute('class', tClass + @.getAttribute('class').replace('clicked', ''))
-          clicked = !clicked
+          clicked[tag] = !clicked[tag]
           e.preventDefault()
           return false
         tagMenu.appendChild tagElem

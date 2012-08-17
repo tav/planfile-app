@@ -194,12 +194,14 @@ input
       width: 25px
   div  
     display: none
-    background: inherit    
-    border-top-right-radius: 0
-    border-top-left-radius: 0
-    border-bottom-left-radius: 3px
-    border-bottom-right-radius: 3px
-    margin-left: 10px    
+    text-decoration: none
+    border-left: 1px solid black
+    padding: 3px 10px
+    background: black
+    color: white
+    font-size: 12px
+    border-radius: 3px
+    margin-left: 5px    
     a
       color: inherit
       text-decoration: none
@@ -272,3 +274,123 @@ p.title
       small
         margin-left: 20px
         color: $grey
+
+/* Source code syntax highlighting
+
+.syntax
+  font-size: 13px
+  margin-bottom: 25px  
+  .c, .cm, .cp, .cs, .c1
+    color: #919191
+  .err
+    color: #a61717
+    background-color: #e3d2d2
+  .g
+    color: #101010
+  .gd
+    color: #d22323
+  .ge
+    color: #101010
+    font-style: italic
+  .gh
+    color: #101010
+  .gi
+    color: #589819
+  .go
+    color: #6a6a6a
+  .gp
+    color: #bb8844
+  .gr
+    color: #d22323
+  .gs
+    color: #101010
+  .gt
+    color: #d22323
+  .gu
+    color: #101010
+  .k
+    color: #c32528
+    color: #ff5600
+  .kc
+    color: #ff5600
+  .kd
+    color: #ff5600
+    color: #ff5600
+  .kn, .kp, .kr, .kt
+    color: #ff5600
+  .l, .ld
+    color: #101010
+  .m
+    color: #3677a9
+    color: #00a33f
+    color: #1550a2
+    color: #5d90cd
+  .mf, .mh, .mi, .il, .mo
+    color: #5d90cd
+  .bp
+    color: #a535ae
+  .n
+    color: #101010
+  .na
+    color: #bbbbbb
+  .nb
+    color: #bf78cc
+    color: #af956f
+    color: #a535ae
+  .nc
+    color: #101010
+  .nd
+    color: #6d8091
+  .ne
+    color: #af956f
+  .nf
+    color: #3677a9
+    color: #1550a2
+  .ni, .nl
+    color: #101010
+  .nn
+    color: #101010
+    color: #101010
+  .no, .nx
+    color: #101010
+  .nt
+    color: #6d8091
+  .nv, .vc, .vg, .vi, .py
+    color: #101010
+  .o
+    color: #ff5600
+    color: #101010
+  .ow, .p
+    color: #101010
+  .s
+    color: #dd1144
+    color: #c32528
+    color: #39946a
+    color: #5d90cd
+    color: #00a33f
+  .sb, .sc
+    color: #00a33f
+  .sd
+    color: #767676
+  .se, .sh, .si, .sr, .ss, .sx, .s1, .s2
+    color: #00a33f
+  .w, .x
+    color: #101010
+  &.bash
+    .nb
+      color: #101010
+    .nv
+      color: #c32528
+  &.css
+    .k
+      color: #606060
+    .nc, .nf, .nt
+      color: #c32528
+  &.rst
+    .k, .ow, .p
+      color: #5d90cd
+  &.yaml
+    .l-Scalar-Plain
+      color: #5d90cd
+    .p-Indicator
+      color: #101010

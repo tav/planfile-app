@@ -3,6 +3,8 @@
 app/app
 assets.json
 config.yaml
+cookie.key
+run
 
 gzipped
 static

@@ -14,7 +14,6 @@ $lightblue: #08B0FF
 body
   font-family: Lato, Helvetica, Arial, serif
   font-size: 16px  
-  background: #F3F3F3
 
 ol,
 ul,
@@ -29,12 +28,11 @@ li
 // * Layout
 
 .container
-  width: 940px
+  width: 960px
   margin: 10px auto
   clear: both
   overflow: auto
   background: white
-  padding: 10px
 
 .columns
   display: block
@@ -54,9 +52,9 @@ li
 // * Site layout
 
 .header
-  padding: 10px 10px 9px
+  padding: 10px 0 19px
   background: white
-  border-bottom: 1px solid #DEDEDE
+  border-bottom: 1px solid #EEE
 
 // * Typography
 
@@ -131,12 +129,6 @@ p
       background: red
       &:hover
         background: $lightred
-
-.planfiles
-  li
-    padding: 10px
-    margin: 10px 0
-//    border: 1px solid $lightgrey
 
 .editor
   clear: both
@@ -216,6 +208,8 @@ p.title
   margin: 0
 
 .tag-menu
+  padding: 10px 0
+  width: 960px  
   a
     color: #B1B1B1
     text-decoration: none
@@ -224,7 +218,7 @@ p.title
     border-radius: 13px
     font-weight: bold
     font-size: 12px
-    margin-right: 10px
+    margin-left: 10px
     float: right
     display: inline-block
     &.clicked
@@ -251,7 +245,7 @@ p.title
         text-decoration: none
         padding: 4px 6px
         background: #EEE
-        margin-right: 10px
+        margin-left: 10px
         border-radius: 3px
         font-size: 10px
         float: right

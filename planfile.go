@@ -7,8 +7,9 @@ import (
 	"amp/crypto"
 	"amp/log"
 	"amp/oauth"
+	"amp/optparse"
 	"amp/runtime"
-	"amp/yaml"
+	"amp/tlsconf"
 	"archive/tar"
 	"bufio"
 	"bytes"
@@ -26,18 +27,10 @@ import (
 	"sync"
 )
 
-var runPath string
-
-type Config struct {
-	CookieKey           string
-	GoogleAnalyticsHost string
-	GoogleAnalyticsID   string
-	OAuthClientID       string
-	OAuthClientSecret   string
-	Repository          string
-	SecureMode          bool
-	RedirectURL         string
-}
+var (
+	httpClient = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsconf.Config}}
+	runPath    string
+)
 
 type Context struct {
 	r      *http.Request
@@ -47,13 +40,7 @@ type Context struct {
 	token  *oauth.Token
 }
 
-type file struct {
-	name    string
-	content []string
-}
-
 func (ctx *Context) Call(path string, v interface{}) error {
-	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://api.github.com"+path, nil)
 	if err != nil {
 		return err
@@ -71,7 +58,7 @@ func (ctx *Context) Call(path string, v interface{}) error {
 		}
 	}
 	req.Header.Add("Authorization", "bearer "+ctx.token.AccessToken)
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -116,10 +103,11 @@ func (ctx *Context) Redirect(path string) {
 
 func (ctx *Context) SetCookie(attr, val string) {
 	http.SetCookie(ctx.w, &http.Cookie{
-		Name:   attr,
-		Value:  crypto.IronString(attr, val, ctx.secret, -1),
-		MaxAge: 0,
-		Secure: ctx.secure,
+		Name:     attr,
+		Value:    crypto.IronString(attr, val, ctx.secret, -1),
+		HttpOnly: true,
+		MaxAge:   0,
+		Secure:   ctx.secure,
 	})
 }
 
@@ -131,14 +119,14 @@ func (ctx *Context) Write(data []byte) (int, error) {
 	return ctx.w.Write(data)
 }
 
-func IsEqual(x, y []byte) bool {
+func isEqual(x, y []byte) bool {
 	if len(x) != len(y) {
 		return false
 	}
 	return subtle.ConstantTimeCompare(x, y) == 1
 }
 
-func ReadFile(path string) []byte {
+func readFile(path string) []byte {
 	c, err := ioutil.ReadFile(path)
 	if err != nil {
 		runtime.StandardError(err)
@@ -146,16 +134,20 @@ func ReadFile(path string) []byte {
 	return c
 }
 
+type file struct {
+	name    string
+	content []string
+}
+
 func LoadRepository(path string) []file {
-	client := &http.Client{}
-	resp, err := client.Get(path)
+	resp, err := httpClient.Get(path)
 	if err != nil {
 		runtime.StandardError(err)
 	}
 	defer resp.Body.Close()
 	zf, err := gzip.NewReader(resp.Body)
 	if err != nil {
-		runtime.StandardError(err)
+		runtime.Error("couldn't find a valid repo tarball at %s -- %s", path, err)
 	}
 	tr := tar.NewReader(zf)
 	repo := []file{}
@@ -203,34 +195,62 @@ func main() {
 
 	log.AddConsoleLogger()
 
-	runPath, _ = os.Getwd()
+	// Define the options for the command line and config file options parser.
+	opts := optparse.Parser(
+		"Usage: planfile <config.yaml> [options]\n",
+		"planfile 0.0.1")
+
+	cookieKeyFile := opts.StringConfig("cookie-key-file", "cookie.key",
+		"the file containing the key to sign cookie values [cookie.key]")
+
+	gaHost := opts.StringConfig("ga-host", "",
+		"the google analytics hostname to use")
+
+	gaID := opts.StringConfig("ga-id", "",
+		"the google analytics id to use")
+
+	httpAddr := opts.StringConfig("http-addr", ":8888",
+		"the address to bind the http server [:8888]")
+
+	oauthID := opts.StringConfig("oauth-id", "",
+		"the oauth client id for github", true)
+
+	oauthSecret := opts.StringConfig("oauth-secret", "",
+		"the oauth client secret for github", true)
+
+	redirectURL := opts.StringConfig("redirect-url", "/oauth",
+		"the redirect url for handling oauth [/oauth]")
+
+	repository := opts.StringConfig("repository", "",
+		"the username/repository on github", true)
+
+	secureMode := opts.BoolConfig("secure-mode", false,
+		"enable hsts and secure cookies [false]")
+
+	_ = gaHost
+	_ = gaID
+
+	debug, instanceDirectory, _ := runtime.DefaultOpts("planfile", opts, os.Args)
+
+	runPath = instanceDirectory
 	setupPygments()
 
-	data, err := yaml.ParseFile("config.yaml")
-	if err != nil {
-		runtime.StandardError(err)
-	}
-
-	config := &Config{}
-	data.LoadStruct(config)
-
 	service := &oauth.OAuthService{
-		ClientID:     config.OAuthClientID,
-		ClientSecret: config.OAuthClientSecret,
+		ClientID:     *oauthID,
+		ClientSecret: *oauthSecret,
 		Scope:        "public_repo",
 		AuthURL:      "https://github.com/login/oauth/authorize",
 		TokenURL:     "https://github.com/login/oauth/access_token",
-		RedirectURL:  config.RedirectURL,
+		RedirectURL:  *redirectURL,
 		AcceptHeader: "application/json",
 	}
 
 	assets := map[string]string{}
-	json.Unmarshal(ReadFile("assets.json"), &assets)
+	json.Unmarshal(readFile("assets.json"), &assets)
 
-	indexHead := ReadFile("templates/index.html")
+	indexHead := readFile("templates/index.html")
 	mutex := sync.RWMutex{}
-	secret := []byte(config.CookieKey)
-	tarURL := "https://github.com/" + config.Repository + "/tarball/master"
+	tarURL := "https://github.com/" + *repository + "/tarball/master"
 
 	saveRepo := func(name string, repo []file, repos map[string][]file) {
 		mutex.Lock()
@@ -242,7 +262,7 @@ func main() {
 	repos := map[string][]file{}
 
 	repo := LoadRepository(tarURL)
-	saveRepo(config.Repository, repo, repos)
+	saveRepo(*repository, repo, repos)
 
 	parseTags := func(lines []string) (tags map[string]string, content []string) {
 		tags = make(map[string]string)
@@ -312,15 +332,16 @@ func main() {
 		return
 	}
 
-	pf := buildPlanfile(repos[config.Repository])
+	pf := buildPlanfile(repos[*repository])
 
+	secret := readFile(*cookieKeyFile)
 	register := func(path string, handler func(*Context)) {
 		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			ctx := &Context{
 				r:      r,
 				w:      w,
 				secret: secret,
-				secure: config.SecureMode,
+				secure: *secureMode,
 			}
 			ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
 			handler(ctx)
@@ -349,7 +370,7 @@ func main() {
 			header = "<div class='container header'><a href='/login' class='button login'>Log in with GitHub</a></div>"
 		}
 		ctx.Write([]byte("<link href='/static/" + assets["planfile.css"] + "' rel='stylesheet' type='text/css'></head>" +
-			"<body data-user='" + username + "' class='"+ bc + "'>" + "<div id='body'><div id='home'>" + header +
+			"<body data-user='" + username + "' class='" + bc + "'>" + "<div id='body'><div id='home'>" + header +
 			"<article class='container planfiles'>" + pf + "</article></div><script src='/static/" + assets["planfile.js"] +
 			"' type='text/javascript'></script></body>"))
 
@@ -378,7 +399,7 @@ func main() {
 			ctx.Redirect("/login")
 			return
 		}
-		if !IsEqual([]byte(s), []byte(ctx.GetCookie("state"))) {
+		if !isEqual([]byte(s), []byte(ctx.GetCookie("state"))) {
 			ctx.ExpireCookie("state")
 			ctx.Redirect("/login")
 			return
@@ -411,9 +432,9 @@ func main() {
 	register("/refresh", func(ctx *Context) {
 		mutex.Lock()
 		defer mutex.Unlock()
-//		repo = LoadRepository(tarURL)                                                                                                                          
-//		saveRepo(config.Repository, repo, repos)
-//		pf = buildPlanfile(repos[config.Repository])
+		//		repo = LoadRepository(tarURL)
+		//		saveRepo(config.Repository, repo, repos)
+		//		pf = buildPlanfile(repos[config.Repository])
 		ctx.Write([]byte("OK."))
 	})
 
@@ -429,29 +450,31 @@ func main() {
 	}
 
 	registerStatic := func(filepath, urlpath string) {
-		content := ReadFile(filepath)
 		split := strings.Split(filepath, ".")
 		ctype, ok := mimetypes[split[len(split)-1]]
 		if !ok {
 			ctype = "application/octet-stream"
 		}
-		register(urlpath, func(ctx *Context) {
-			ctx.SetHeader("Content-Type", ctype)
-			ctx.Write(content)
-		})
+		if debug {
+			register(urlpath, func(ctx *Context) {
+				ctx.SetHeader("Content-Type", ctype)
+				ctx.Write(readFile(filepath))
+			})
+		} else {
+			content := readFile(filepath)
+			register(urlpath, func(ctx *Context) {
+				ctx.SetHeader("Content-Type", ctype)
+				ctx.Write(content)
+			})
+		}
 	}
 
 	for _, path := range assets {
 		registerStatic("static/"+path, "/static/"+path)
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8888"
-	}
-
-	log.Info("Listening on port %s", port)
-	err = http.ListenAndServe(":"+port, nil)
+	log.Info("Listening on %s", *httpAddr)
+	err := http.ListenAndServe(*httpAddr, nil)
 	if err != nil {
 		runtime.Error("couldn't bind to tcp socket: %s", err)
 	}

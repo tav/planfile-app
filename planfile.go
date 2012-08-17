@@ -18,7 +18,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/russross/blackfriday"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -26,6 +25,8 @@ import (
 	"strings"
 	"sync"
 )
+
+var runPath string
 
 type Config struct {
 	CookieKey           string
@@ -186,7 +187,6 @@ func LoadRepository(path string) []file {
 					lines = append(lines, buffer.String())
 					buffer.Reset()
 				}
-
 			}
 			repo = append(repo, file{filename[0], lines})
 		}
@@ -202,6 +202,10 @@ type User struct {
 func main() {
 
 	log.AddConsoleLogger()
+
+	runPath, _ = os.Getwd()
+	setupPygments()
+
 	data, err := yaml.ParseFile("config.yaml")
 	if err != nil {
 		runtime.StandardError(err)
@@ -292,7 +296,12 @@ func main() {
 			entry := strings.Join(content, "\n")
 			form := "<form action='.' method='post' style='display:none;'><textarea name='content'>" + original +
 				"</textarea><input type='hidden' value='" + f.name + "'/></form>"
-			e = string(blackfriday.MarkdownBasic([]byte(entry)))
+			rendered, err := renderMarkdown([]byte(entry))
+			if err != nil {
+				log.StandardError(err)
+				continue
+			}
+			e = string(rendered)
 			if strings.ToLower(f.name) == "readme.md" {
 				rf = "<section class='entry readme " + tsc + "'>" + e + a + form + "</section>"
 			} else {
@@ -327,10 +336,12 @@ func main() {
 		}
 
 		ctx.Write(indexHead)
+		var bc string
 		var header string
 		username := ctx.GetCookie("user")
 		avatarURL := ctx.GetCookie("avatar-url")
 		if username != "" {
+			bc = "loggedin"
 			header = "<div class='container header'><div class='logo'><a id='logo'>planfile</a></div>" +
 				"<div class='user_controls'><a id='user'><img src='" + avatarURL + "'><span>" + username +
 				"</span></a><div><a href='/logout' id='logout'>Log out</a></div></div></div>"
@@ -338,7 +349,7 @@ func main() {
 			header = "<div class='container header'><a href='/login' class='button login'>Log in with GitHub</a></div>"
 		}
 		ctx.Write([]byte("<link href='/static/" + assets["planfile.css"] + "' rel='stylesheet' type='text/css'></head>" +
-			"<body data-user='" + username + "'>" + "<div id='body'><div id='home'>" + header +
+			"<body data-user='" + username + "' class='"+ bc + "'>" + "<div id='body'><div id='home'>" + header +
 			"<article class='container planfiles'>" + pf + "</article></div><script src='/static/" + assets["planfile.js"] +
 			"' type='text/javascript'></script></body>"))
 
@@ -400,6 +411,9 @@ func main() {
 	register("/refresh", func(ctx *Context) {
 		mutex.Lock()
 		defer mutex.Unlock()
+//		repo = LoadRepository(tarURL)                                                                                                                          
+//		saveRepo(config.Repository, repo, repos)
+//		pf = buildPlanfile(repos[config.Repository])
 		ctx.Write([]byte("OK."))
 	})
 

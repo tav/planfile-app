@@ -193,8 +193,6 @@ type User struct {
 
 func main() {
 
-	log.AddConsoleLogger()
-
 	// Define the options for the command line and config file options parser.
 	opts := optparse.Parser(
 		"Usage: planfile <config.yaml> [options]\n",
@@ -252,17 +250,9 @@ func main() {
 	mutex := sync.RWMutex{}
 	tarURL := "https://github.com/" + *repository + "/tarball/master"
 
-	saveRepo := func(name string, repo []file, repos map[string][]file) {
-		mutex.Lock()
-		repos[name] = repo
-		mutex.Unlock()
-	}
-
 	// Store repository in map 	
 	repos := map[string][]file{}
-
-	repo := LoadRepository(tarURL)
-	saveRepo(*repository, repo, repos)
+	repos[*repository] = LoadRepository(tarURL)
 
 	parseTags := func(lines []string) (tags map[string]string, content []string) {
 		tags = make(map[string]string)
@@ -432,9 +422,8 @@ func main() {
 	register("/refresh", func(ctx *Context) {
 		mutex.Lock()
 		defer mutex.Unlock()
-		//		repo = LoadRepository(tarURL)
-		//		saveRepo(config.Repository, repo, repos)
-		//		pf = buildPlanfile(repos[config.Repository])
+		repos[*repository] = LoadRepository(tarURL)
+		pf = buildPlanfile(repos[*repository])
 		ctx.Write([]byte("OK."))
 	})
 

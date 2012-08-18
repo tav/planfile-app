@@ -37,3 +37,4 @@ while 1:
         if DEBUG:
             print_exc(100, f)
             f.flush()
+        break

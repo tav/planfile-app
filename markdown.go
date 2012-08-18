@@ -4,6 +4,7 @@
 package main
 
 import (
+	"amp/log"
 	"amp/runtime"
 	"bytes"
 	"encoding/binary"
@@ -19,7 +20,10 @@ const (
 	DefaultHtmlFlags  = blackfriday.HTML_USE_SMARTYPANTS | blackfriday.HTML_SMARTYPANTS_FRACTIONS
 )
 
-var hilite *Hilite
+var (
+	hilite     *Hilite
+	hiliteSync sync.Mutex
+)
 
 type Html struct {
 	i blackfriday.Renderer
@@ -142,6 +146,8 @@ func renderMarkdown(input []byte) (out []byte, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			if e, ok := e.(error); ok {
+				log.Info("hilite error: restarting, due to: %s", e)
+				setupPygments()
 				err = e
 			}
 		}
@@ -159,7 +165,9 @@ type Hilite struct {
 }
 
 func (h *Hilite) Close() {
-	h.p.Kill()
+	if h.p != nil {
+		h.p.Kill()
+	}
 }
 
 func (h *Hilite) Render(lang string, text []byte) ([]byte, error) {
@@ -200,15 +208,15 @@ func (h *Hilite) Run() {
 		runtime.StandardError(err)
 	}
 	h.p = proc
-	proc.Wait()
+	go proc.Wait()
 }
 
 func setupPygments() {
+	hiliteSync.Lock()
+	defer hiliteSync.Unlock()
 	if hilite != nil {
-		hilite.m.Lock()
 		hilite.Close()
-		hilite.m.Unlock()
 	}
 	hilite = &Hilite{}
-	go hilite.Run()
+	hilite.Run()
 }

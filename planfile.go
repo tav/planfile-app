@@ -24,7 +24,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -180,73 +179,69 @@ func rsplit(s string, sep string) (string, string) {
 type Planfile struct {
 	Content  string   `json:"content"`
 	Depends  []string `json:"depends"`
-	Overview bool     `json:"isOverview"`
 	Path     string   `json:"path"`
 	Rendered string   `json:"rendered"`
 	Tags     []string `json:"tags"`
 	Title    string   `json:"title"`
 }
 
-func NewPlanfile(path string, content []byte) (p *Planfile, id string, users []string, ok bool) {
-	if len(content) < 4 || !bytes.HasPrefix(content, tripleDash) {
-		return
+func NewPlanfile(path string, content []byte) (p *Planfile, id string, section string, users []string, ok bool) {
+	var metadata []byte
+	if len(content) >= 4 && bytes.HasPrefix(content, tripleDash) {
+		s := bytes.SplitN(content[4:], tripleDash, 2)
+		if len(s) == 2 {
+			metadata = s[0]
+			content = bytes.TrimSpace(s[1])
+		}
 	}
-	s := bytes.SplitN(content[4:], tripleDash, 2)
-	if len(s) != 2 {
-		return
-	}
-	content = bytes.TrimSpace(s[1])
 	p = &Planfile{
 		Content: string(content),
 		Depends: []string{},
 		Path:    path,
 		Tags:    []string{},
 	}
-	for _, line := range bytes.Split(s[0], []byte{'\n'}) {
-		kv := bytes.SplitN(line, []byte{':'}, 2)
-		if len(kv) != 2 {
-			continue
-		}
-		v := bytes.TrimSpace(kv[1])
-		switch string(bytes.TrimSpace(kv[0])) {
-		case "overview":
-			p.Overview = true
-		case "id":
-			id = string(v)
-		case "tags":
-			for _, f := range bytes.Split(v, []byte{' '}) {
-				tag := strings.TrimRight(string(f), ",")
-				if len(tag) < 2 {
-					continue
-				}
-				if tag[0] == '@' {
-					users = append(users, strings.ToLower(tag[1:]))
-				}
-				if strings.ToUpper(tag) != tag {
-					tag = strings.ToLower(tag)
-				}
-				if strings.HasPrefix(tag, "dep:") && len(tag) > 4 {
-					n, _ := strconv.ParseUint(tag[4:], 10, 64)
-					if n > 0 {
+	if len(metadata) > 0 {
+		for _, line := range bytes.Split(metadata, []byte{'\n'}) {
+			kv := bytes.SplitN(line, []byte{':'}, 2)
+			if len(kv) != 2 {
+				continue
+			}
+			v := bytes.TrimSpace(kv[1])
+			switch string(bytes.TrimSpace(kv[0])) {
+			case "id":
+				id = string(v)
+			case "tags":
+				for _, f := range bytes.Split(v, []byte{' '}) {
+					tag := strings.TrimRight(string(f), ",")
+					if len(tag) < 2 {
+						continue
+					}
+					if tag[0] == '@' {
+						users = append(users, strings.ToLower(tag[1:]))
+					}
+					if strings.ToUpper(tag) != tag {
+						tag = strings.ToLower(tag)
+					}
+					if strings.HasPrefix(tag, "dep:") && len(tag) > 4 {
 						tag = tag[4:]
 						if !contains(p.Depends, tag) {
 							p.Depends = append(p.Depends, tag)
 						}
-					}
-				} else {
-					if !contains(p.Tags, tag) {
-						p.Tags = append(p.Tags, tag)
+					} else {
+						if strings.HasSuffix(tag, ":overview") {
+							section = tag[:len(tag)-9]
+						} else if !contains(p.Tags, tag) {
+							p.Tags = append(p.Tags, tag)
+						}
 					}
 				}
+			case "title":
+				p.Title = string(v)
 			}
-		case "title":
-			p.Title = string(v)
 		}
+		sort.StringSlice(p.Depends).Sort()
+		sort.StringSlice(p.Tags).Sort()
 	}
-	// if id == "" {
-	// 	log.Error("ID not found for: %s", path)
-	// 	return
-	// }
 	rendered, err := renderMarkdown(content)
 	if err != nil {
 		log.Error("couldn't render %s: %s", path, err)
@@ -254,16 +249,15 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, users []s
 	}
 	ok = true
 	p.Rendered = string(rendered)
-	sort.StringSlice(p.Depends).Sort()
-	sort.StringSlice(p.Tags).Sort()
 	return
 }
 
 type Repo struct {
-	Avatars map[string]string    `json:"avatars"`
-	Files   map[string]*Planfile `json:"files"`
-	Latest  uint64               `json:"-"`
-	Path    string               `json:"path"`
+	Avatars  map[string]string    `json:"avatars"`
+	Files    map[string]*Planfile `json:"files"`
+	Latest   uint64               `json:"-"`
+	Sections map[string]*Planfile `json:"sections"`
+	Path     string               `json:"path"`
 }
 
 func (r *Repo) Load() error {
@@ -283,6 +277,7 @@ func (r *Repo) Load() error {
 	tr := tar.NewReader(zf)
 	avatars := map[string]string{}
 	files := map[string]*Planfile{}
+	sections := map[string]*Planfile{}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -295,18 +290,27 @@ func (r *Repo) Load() error {
 		filename, ext := rsplit(hdr.Name, ".")
 		_, filename = rsplit(filename, "/")
 		// Check if the file ends with .md and is not a README file.
-		if strings.ToLower(filename) != "readme" && ext == "md" {
+		if ext == "md" {
 			log.Info("parsing: %s", filename)
 			data, err := ioutil.ReadAll(tr)
 			if err != nil {
 				log.Error("reading tarball file %q: %s", hdr.Name, err)
 				continue
 			}
-			pf, id, userRefs, ok := NewPlanfile(filename, data)
+			pf, id, section, userRefs, ok := NewPlanfile(filename, data)
 			if !ok {
 				continue
 			}
-			files[id] = pf
+			if strings.ToLower(filename) == "readme" {
+				sections["root"] = pf
+			} else if section != "" {
+				sections[section] = pf
+			} else if id == "" {
+				log.Error("ID not found for: %s", filename)
+				continue
+			} else {
+				files[id] = pf
+			}
 			for _, username := range userRefs {
 				if _, ok := avatars[username]; !ok {
 					user := &User{}
@@ -318,22 +322,11 @@ func (r *Repo) Load() error {
 					avatars[username] = user.AvatarURL
 				}
 			}
-		} else if filename == ".latest" {
-			data, err := ioutil.ReadAll(tr)
-			if err != nil {
-				log.Error("reading tarball file %q: %s", hdr.Name, err)
-				continue
-			}
-			latest, err := strconv.ParseUint(string(bytes.TrimSpace(data)), 10, 64)
-			if err != nil {
-				log.Error("couldn't parse the counter in the .latest file: %s", err)
-				continue
-			}
-			r.Latest = latest
 		}
 	}
 	r.Avatars = avatars
 	r.Files = files
+	r.Sections = sections
 	log.Info("successfully loaded repo: %s", r.Path)
 	return nil
 }

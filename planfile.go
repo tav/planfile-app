@@ -107,6 +107,32 @@ func (ctx *Context) GetCookie(attr string) string {
 	return ""
 }
 
+func (ctx *Context) IsAuthorised(repo *Repo) bool {
+	auth := ctx.GetCookie("auth")
+	if auth == "0" {
+		return false
+	} else if auth == "1" {
+		return true
+	}
+	user := ctx.GetCookie("user")
+	if user == "" {
+		ctx.SetCookie("auth", "0")
+		return false
+	}
+	resp, err := httpClient.Get("https://api.github.com/repos/" + repo.Path + "/collaborators/" + user)
+	if err != nil {
+		log.Error("couldn't do authorisation check for %q: %s", user, err)
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 {
+		ctx.SetCookie("auth", "0")
+		return false
+	}
+	ctx.SetCookie("auth", "1")
+	return true
+}
+
 func (ctx *Context) Redirect(path string) {
 	http.Redirect(ctx.w, ctx.r, path, http.StatusFound)
 }
@@ -308,7 +334,7 @@ func (r *Repo) Load() error {
 				continue
 			}
 			if strings.ToLower(filename) == "readme" {
-				sections["root"] = pf
+				sections["/"] = pf
 			} else if section != "" {
 				sections[section] = pf
 			} else {
@@ -348,7 +374,7 @@ func (r *Repo) Load() error {
 		}
 	}
 	for section, _ := range sections {
-		if _, ok := tagMap[section]; !ok && section != "root" {
+		if _, ok := tagMap[section]; !ok && section != "/" {
 			tagMap[section] = []string{}
 		}
 	}
@@ -469,7 +495,10 @@ func main() {
 		})
 	}
 
-	anon := []byte(", null, null")
+	anon := []byte(", null, null, false")
+	authFalse := []byte("', false")
+	authTrue := []byte("', true")
+
 	header := []byte(`<!doctype html>
 <meta charset=utf-8>
 <title>` + html.EscapeString(*title) + `</title>
@@ -490,7 +519,12 @@ func main() {
 		avatar := ctx.GetCookie("avatar")
 		user := ctx.GetCookie("user")
 		if avatar != "" && user != "" {
-			ctx.Write([]byte(", '" + user + "', '" + avatar + "'"))
+			ctx.Write([]byte(", '" + user + "', '" + avatar))
+			if ctx.IsAuthorised(repo) {
+				ctx.Write(authTrue)
+			} else {
+				ctx.Write(authFalse)
+			}
 		} else {
 			ctx.Write(anon)
 		}
@@ -509,6 +543,7 @@ func main() {
 	})
 
 	register("/.logout", func(ctx *Context) {
+		ctx.ExpireCookie("auth")
 		ctx.ExpireCookie("avatar")
 		ctx.ExpireCookie("token")
 		ctx.ExpireCookie("user")
@@ -554,13 +589,17 @@ func main() {
 	register("/.refresh", func(ctx *Context) {
 		mutex.Lock()
 		defer mutex.Unlock()
+		if !ctx.IsAuthorised(repo) {
+			ctx.Write([]byte("ERROR: Not Authorised!"))
+			return
+		}
 		err := repo.Load()
 		if err != nil {
 			log.Error("couldn't rebuild planfile info: %s", err)
 			ctx.Write([]byte("ERROR: " + err.Error()))
 			return
 		}
-		ctx.Write([]byte("OK"))
+		ctx.Redirect("/")
 	})
 
 	mimetypes := map[string]string{

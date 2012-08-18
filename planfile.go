@@ -43,8 +43,16 @@ type Context struct {
 	token  *oauth.Token
 }
 
-func (ctx *Context) Call(path string, v interface{}) error {
-	req, err := http.NewRequest("GET", "https://api.github.com"+path, nil)
+func (ctx *Context) Call(path string, v interface{}, body io.Reader) error {
+	var (
+		err error
+		req *http.Request
+	)
+	if body == nil {
+		req, err = http.NewRequest("GET", "https://api.github.com"+path, nil)
+	} else {
+		req, err = http.NewRequest("POST", "https://api.github.com"+path, body)
+	}
 	if err != nil {
 		return err
 	}
@@ -489,7 +497,7 @@ func main() {
 		ctx.SetCookie("token", hex.EncodeToString(jtok))
 		ctx.token = tok
 		user := &User{}
-		err = ctx.Call("/user", user)
+		err = ctx.Call("/user", user, nil)
 		if err != nil {
 			ctx.Error("Couldn't load user info", err)
 			return

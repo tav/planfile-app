@@ -1,3 +1,6 @@
+// Public Domain (-) 2012 The Planfile App Authors.
+// See the Planfile App UNLICENSE file for details.
+
 // * General styles
 
 $grey: #777
@@ -106,7 +109,7 @@ p
     color: #222
     padding: 14px 20px
     border: 1px solid #DFDFDF
-  &.login
+  &.login, &.logout
     color: white
     text-decoration: none
     padding: 10px
@@ -117,6 +120,15 @@ p
     font-weight: 400
     &:hover
       background: #02A7F5
+  &.logout
+    background: #f0f0f0
+    color: #000
+    &:hover
+      background: #dedede
+    img
+      height: 25px
+      padding-left: 9px
+      width: 25px
 
 .sidebar
   background: black
@@ -249,12 +261,12 @@ p.title
         border-radius: 3px
         font-size: 10px
         float: right
-        &[data-tag-link*="@"]
-          background: $red
-          color: white  
-        &[data-tag-link*="#"]
-          background: $lightblue
-          color: white  
+      .tag-user
+        background: $red
+        color: white
+      .tag-hashtag
+        background: $lightblue
+        color: white
   ul
     li
       padding: 10px
@@ -269,7 +281,7 @@ p.title
         margin-left: 20px
         color: $grey
 
-/* Source code syntax highlighting
+// * Source code syntax highlighting
 
 .syntax
   font-size: 13px

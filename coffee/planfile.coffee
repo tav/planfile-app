@@ -1,104 +1,115 @@
+# Public Domain (-) 2012 The Planfile App Authors.
+# See the Planfile App UNLICENSE file for details.
+
 define 'planfile', (exports, root) ->
 
   doc = root.document
-  doc.$ = root.getElementByID
+  doc.$ = doc.getElementById
   body = doc.body
-  local = root.localStorage
+  domly = amp.domly
+  rmtree = amp.rmtree
 
-  exports.getLogin = getLogin = ->
-    body.getAttribute('data-user')
+  [ANALYTICS_HOST, ANALYTICS_ID, repo, username, avatar] = root.DATA
 
-  exports.getAvatarURL = getAvatarURL = ->
-    body.getAtrribute('data-avatar-url')
+  if ANALYTICS_ID and doc.location.hostname isnt 'localhost'
+    root._gaq = [
+      ['_setAccount', ANALYTICS_ID]
+      ['_setDomainName', ANALYTICS_HOST]
+      ['_trackPageview']
+    ]
+    (->
+      ga = doc.createElement 'script'
+      ga.type = 'text/javascript'
+      ga.async = true
+      if doc.location.protocol is 'https:'
+        ga.src = 'https://ssl.google-analytics.com/ga.js'
+      else
+        ga.src = 'http://www.google-analytics.com/ga.js'
+      s = doc.getElementsByTagName('script')[0]
+      s.parentNode.insertBefore(ga, s)
+      return
+    )()
 
-  exports.showIndexLogin = showIndexLogin = ->
-    userName = getLogin()
+  renderHeader = ->
+    if username
+      header = ['div', $: 'container header',
+        ['a', href: "/.logout", $: 'button logout',
+          "Logout #{username}"
+          ['img', src: avatar],
+        ],
+      ]
+    else
+      header = ['div', $: 'container header',
+        ['a', href: '/.login', $: 'button login', 'Login with GitHub']
+      ]
+    domly header, body
 
-  exports.showIndexLoggedIn = showIndexLoggedIn = ->
-    userName = getLogin()
+  getToggler = (tag) ->
+    ->
+      alert tag
 
-  exports.auth = auth = ->
-    if getLogin() == '' then false else true
+  tagTypes = {}
+  $planfiles = null
 
-  buildTags = ->
-    tagMenu = doc.createElement 'div'
-    tagMenu.setAttribute 'class', 'container tag-menu'
-    tagList = doc.querySelector('article input[type="hidden"]').value
-    active = ''
-    clicked = {}
-    for tag in tagList.trim().split(" ")
-      do (tag) ->
-        tagElem = document.createElement 'a'
-        tagElem.href = '#'
-        tagText = tag.replace('tag-user-', '@').replace('tag-label-', '#')
-        tagElem.textContent = tagText
-        tagElem.setAttribute 'class', tag
-        clicked[tag] = false
-        tagElem.onclick = (e) ->
-          tClass = ''
-          if !clicked[tag]
-            tClass = 'clicked '
-            active = active.trim() + " " + tag
-          else
-            active = active.replace tag, ''
-          search = (source, token) ->
-            if source.search token > -1
-              console.log 'found string'
-              return 0
-            return -1
-          activeTags = active.trim().split(" ")
-          searchAll = (target, items) ->
-            count = 0
-            for item in items
-              do (item) ->
-                if target.search(item) > -1
-                  count += 1
-            count
-          targets = doc.querySelectorAll 'section'
-          for target in targets
-            do (target) ->
-              oldClass = target.getAttribute 'class'
-              if searchAll(oldClass, activeTags) == activeTags.length
-                target.setAttribute 'style', ''
-              else
-                target.setAttribute 'style', 'display: none;'
-          @.setAttribute('class', tClass + @.getAttribute('class').replace('clicked', ''))
-          clicked[tag] = !clicked[tag]
-          e.preventDefault()
-          return false
-        tagMenu.appendChild tagElem
-    header = doc.querySelector '.header'
-    header.insertAdjacentElement 'afterend', tagMenu
+  renderBar = ->
+    elems = ['div', $: 'container tag-menu']
+    tags = repo.tags.slice(0)
+    tags.reverse()
+    for tag in tags
+      norm = tag
+      s = tag[0]
+      if s is '#'
+        tagTypes[tag] = 'hashtag'
+        norm = tag.slice 1
+      else if s is '@'
+        tagTypes[tag] = 'user'
+      else if s.toUpperCase() is s
+        tagTypes[tag] = 'state'
+      else
+        tagTypes[tag] = 'custom'
+      elems.push ['a', href: "/#{norm}", onclick: getToggler(tag), tag]
+    domly elems, body
+
+  renderPlan = (typ, id, pf) ->
+    if id == 'root'
+      title = "Planfile"
+    else
+      title = pf.title or pf.path
+    tags = ['div', $: 'tags']
+    pf.tags.reverse()
+    for tag in pf.tags
+      tags.push ['span', $: "tag-#{tagTypes[tag]}", tag]
+    ['section', $: 'entry', ['h1', title], ['div', id: "#{typ}-#{id}"], tags]
+
+  renderPlans = ->
+    elems = ['div', id: 'planfiles', $: 'container planfiles', style: 'display: none;']
+    for id, pf of repo.sections
+      elems.push renderPlan('overview', id, pf)
+    for id, pf of repo.planfiles
+      elems.push renderPlan('planfile', id, pf)
+    domly elems, body
+    for id, pf of repo.sections
+      doc.$("overview-#{id}").innerHTML = pf.rendered
+    for id, pf of repo.planfiles
+      doc.$("planfile-#{id}").innerHTML = pf.rendered
+    $planfiles = doc.$ 'planfiles'
 
   exports.run = ->
-    buildTags()
-    if auth()
-      showIndexLoggedIn()
-    else
-      showIndexLogin()
+    for prop in ['XMLHttpRequest', 'addEventListener']
+      if !root[prop]
+        alert "Sorry, this app only works on newer browsers with HTML5 features :("
+        return
+    renderHeader()
+    renderBar()
+    renderPlans()
+    $planfiles.style.display = 'block'
 
-  exports.ajax = ajax = (url, method, callback, params) ->
-    obj = undefined
-    try
-      obj = new XMLHttpRequest()
-    catch e
-      try
-        obj = new ActiveXObject("Msxml2.XMLHTTP")
-      catch e
-        try
-          obj = new ActiveXObject("Microsoft.XMLHTTP")
-        catch e
-          alert "Your browser does not support Ajax."
-          return false
+  ajax = (url, method, callback, params) ->
+    obj = new XMLHttpRequest()
     obj.onreadystatechange = ->
-      callback obj  if obj.readyState is 4
-
+      callback obj if obj.readyState is 4
     obj.open method, url, true
     obj.send params
     obj
 
-((root, doc) ->
-
-  root.planfile.run()
-
-)(window, document)
+planfile.run()

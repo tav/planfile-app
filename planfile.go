@@ -11,7 +11,6 @@ import (
 	"amp/runtime"
 	"amp/tlsconf"
 	"archive/tar"
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
@@ -19,10 +18,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -30,6 +32,7 @@ import (
 var (
 	httpClient = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsconf.Config}}
 	runPath    string
+	tripleDash = []byte("---\n")
 )
 
 type Context struct {
@@ -119,6 +122,30 @@ func (ctx *Context) Write(data []byte) (int, error) {
 	return ctx.w.Write(data)
 }
 
+func callGithub(path string, v interface{}) error {
+	req, err := http.NewRequest("GET", "https://api.github.com"+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(v)
+	return err
+}
+
+func contains(xs []string, s string) bool {
+	for _, e := range xs {
+		if e == s {
+			return true
+		}
+	}
+	return false
+}
+
 func isEqual(x, y []byte) bool {
 	if len(x) != len(y) {
 		return false
@@ -134,61 +161,178 @@ func readFile(path string) []byte {
 	return c
 }
 
-type file struct {
-	name    string
-	content []string
+func rsplit(s string, sep string) (string, string) {
+	i := strings.LastIndex(s, sep)
+	if i == -1 {
+		return s, ""
+	}
+	return s[:i], s[i+1:]
 }
 
-func LoadRepository(path string) []file {
-	resp, err := httpClient.Get(path)
+type Planfile struct {
+	Content  string   `json:"content"`
+	Depends  []string `json:"depends"`
+	Overview bool     `json:"isOverview"`
+	Path     string   `json:"path"`
+	Rendered string   `json:"rendered"`
+	Tags     []string `json:"tags"`
+	Title    string   `json:"title"`
+}
+
+func NewPlanfile(path string, content []byte) (p *Planfile, id string, users []string, ok bool) {
+	if len(content) < 4 || !bytes.HasPrefix(content, tripleDash) {
+		return
+	}
+	s := bytes.SplitN(content[4:], tripleDash, 2)
+	if len(s) != 2 {
+		return
+	}
+	content = bytes.TrimSpace(s[1])
+	p = &Planfile{
+		Content: string(content),
+		Depends: []string{},
+		Path:    path,
+		Tags:    []string{},
+	}
+	for _, line := range bytes.Split(s[0], []byte{'\n'}) {
+		kv := bytes.SplitN(line, []byte{':'}, 2)
+		if len(kv) != 2 {
+			continue
+		}
+		v := bytes.TrimSpace(kv[1])
+		switch string(bytes.TrimSpace(kv[0])) {
+		case "overview":
+			p.Overview = true
+		case "id":
+			id = string(v)
+		case "tags":
+			for _, f := range bytes.Split(v, []byte{' '}) {
+				tag := strings.TrimRight(string(f), ",")
+				if len(tag) < 2 {
+					continue
+				}
+				if tag[0] == '@' {
+					users = append(users, strings.ToLower(tag[1:]))
+				}
+				if strings.ToUpper(tag) != tag {
+					tag = strings.ToLower(tag)
+				}
+				if strings.HasPrefix(tag, "dep:") && len(tag) > 4 {
+					n, _ := strconv.ParseUint(tag[4:], 10, 64)
+					if n > 0 {
+						tag = tag[4:]
+						if !contains(p.Depends, tag) {
+							p.Depends = append(p.Depends, tag)
+						}
+					}
+				} else {
+					if !contains(p.Tags, tag) {
+						p.Tags = append(p.Tags, tag)
+					}
+				}
+			}
+		case "title":
+			p.Title = string(v)
+		}
+	}
+	// if id == "" {
+	// 	log.Error("ID not found for: %s", path)
+	// 	return
+	// }
+	rendered, err := renderMarkdown(content)
 	if err != nil {
-		runtime.StandardError(err)
+		log.Error("couldn't render %s: %s", path, err)
+		return
+	}
+	ok = true
+	p.Rendered = string(rendered)
+	sort.StringSlice(p.Depends).Sort()
+	sort.StringSlice(p.Tags).Sort()
+	return
+}
+
+type Repo struct {
+	Avatars map[string]string    `json:"avatars"`
+	Files   map[string]*Planfile `json:"files"`
+	Latest  uint64               `json:"-"`
+	Path    string               `json:"path"`
+}
+
+func (r *Repo) Load() error {
+	log.Info("loading repo: %s", r.Path)
+	url := "https://github.com/" + r.Path + "/tarball/master"
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		log.StandardError(err)
+		return err
 	}
 	defer resp.Body.Close()
 	zf, err := gzip.NewReader(resp.Body)
 	if err != nil {
-		runtime.Error("couldn't find a valid repo tarball at %s -- %s", path, err)
+		log.Error("couldn't find a valid repo tarball at %s -- %s", url, err)
+		return err
 	}
 	tr := tar.NewReader(zf)
-	repo := []file{}
+	avatars := map[string]string{}
+	files := map[string]*Planfile{}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			runtime.StandardError(err)
+			log.Error("reading tarball: %s", err)
+			return err
 		}
-		splitDot := strings.Split(hdr.Name, ".")
-		splitSlash := strings.Split(hdr.Name, "/")
-		// Check if the file ends with .md
-		ending := splitDot[len(splitDot)-1:]
-		if ending[0] == "md" {
-			var lines []string
-			var part []byte
-			var prefix bool
-			filename := splitSlash[len(splitSlash)-1:]
-			reader := bufio.NewReader(tr)
-			buffer := &bytes.Buffer{}
-			for {
-				if part, prefix, err = reader.ReadLine(); err != nil {
-					break
-				}
-				buffer.Write(part)
-				if !prefix {
-					lines = append(lines, buffer.String())
-					buffer.Reset()
+		filename, ext := rsplit(hdr.Name, ".")
+		_, filename = rsplit(filename, "/")
+		// Check if the file ends with .md and is not a README file.
+		if strings.ToLower(filename) != "readme" && ext == "md" {
+			log.Info("parsing: %s", filename)
+			data, err := ioutil.ReadAll(tr)
+			if err != nil {
+				log.Error("reading tarball file %q: %s", hdr.Name, err)
+				continue
+			}
+			pf, id, userRefs, ok := NewPlanfile(filename, data)
+			if !ok {
+				continue
+			}
+			files[id] = pf
+			for _, username := range userRefs {
+				if _, ok := avatars[username]; !ok {
+					user := &User{}
+					err = callGithub("/users/"+username, user)
+					if err != nil {
+						log.Error("couldn't load github user info for %q: %s", username, err)
+						user.AvatarURL = "https://assets.github.com/images/gravatars/gravatar-140.png"
+					}
+					avatars[username] = user.AvatarURL
 				}
 			}
-			repo = append(repo, file{filename[0], lines})
+		} else if filename == ".latest" {
+			data, err := ioutil.ReadAll(tr)
+			if err != nil {
+				log.Error("reading tarball file %q: %s", hdr.Name, err)
+				continue
+			}
+			latest, err := strconv.ParseUint(string(bytes.TrimSpace(data)), 10, 64)
+			if err != nil {
+				log.Error("couldn't parse the counter in the .latest file: %s", err)
+				continue
+			}
+			r.Latest = latest
 		}
 	}
-	return repo
+	r.Avatars = avatars
+	r.Files = files
+	log.Info("successfully loaded repo: %s", r.Path)
+	return nil
 }
 
 type User struct {
+	AvatarURL string `json:"avatar"`
 	Login     string `json:"login"`
-	AvatarURL string `json:"avatar_url"`
 }
 
 func main() {
@@ -216,8 +360,8 @@ func main() {
 	oauthSecret := opts.StringConfig("oauth-secret", "",
 		"the oauth client secret for github", true)
 
-	redirectURL := opts.StringConfig("redirect-url", "/oauth",
-		"the redirect url for handling oauth [/oauth]")
+	redirectURL := opts.StringConfig("redirect-url", "/.oauth",
+		"the redirect url for handling oauth [/.oauth]")
 
 	repository := opts.StringConfig("repository", "",
 		"the username/repository on github", true)
@@ -225,13 +369,10 @@ func main() {
 	secureMode := opts.BoolConfig("secure-mode", false,
 		"enable hsts and secure cookies [false]")
 
-	_ = gaHost
-	_ = gaID
+	title := opts.StringConfig("title", "Planfile",
+		"the title for the web app [Planfile]")
 
 	debug, instanceDirectory, _ := runtime.DefaultOpts("planfile", opts, os.Args)
-
-	runPath = instanceDirectory
-	setupPygments()
 
 	service := &oauth.OAuthService{
 		ClientID:     *oauthID,
@@ -245,84 +386,21 @@ func main() {
 
 	assets := map[string]string{}
 	json.Unmarshal(readFile("assets.json"), &assets)
+	runPath = instanceDirectory
+	setupPygments()
 
-	indexHead := readFile("templates/index.html")
 	mutex := sync.RWMutex{}
-	tarURL := "https://github.com/" + *repository + "/tarball/master"
+	repo := &Repo{Path: *repository}
 
-	// Store repository in map 	
-	repos := map[string][]file{}
-	repos[*repository] = LoadRepository(tarURL)
-
-	parseTags := func(lines []string) (tags map[string]string, content []string) {
-		tags = make(map[string]string)
-		for i, l := range lines {
-			if strings.Trim(l, " ") == "---" {
-				j := i + 1
-				for strings.Trim(lines[j], "") != "---" && j < len(lines)-1 {
-					tl := strings.Split(lines[j], ":")
-					tags[tl[0]] = tl[1]
-					j++
-				}
-				content = lines[j+1:]
-				break
-			}
-		}
-		return
+	err := repo.Load()
+	if err != nil {
+		runtime.Exit(1)
 	}
 
-	generateTags := func(t string) (tags string) {
-		t = strings.Trim(t, "  ")
-		ts := strings.Split(t, " ")
-		for _, c := range ts {
-			tags += "<span data-tag-link='" + c + "'>" + c + "</span>"
-		}
-		return
+	repoJSON, err := json.Marshal(repo)
+	if err != nil {
+		runtime.StandardError(err)
 	}
-
-	generateTagClasses := func(t string) string {
-		t = strings.Trim(t, "  ")
-		t = strings.Replace(t, "@", "tag-user-", -1)
-		t = strings.Replace(t, "#", "tag-label-", -1)
-		return t
-	}
-
-	// Build a planfile from a list of files
-	buildPlanfile := func(repo []file) (pf string) {
-		var rf, e, a string
-		var tagList string
-		for _, f := range repo {
-			tags, content := parseTags(f.content)
-			ts := generateTags(tags["tags"])
-			tsc := generateTagClasses(tags["tags"])
-			tsl := strings.Split(tsc, " ")
-			for _, t := range tsl {
-				if !strings.Contains(tagList, t) {
-					tagList += " " + t
-				}
-			}
-			a = "<div class='tags'><a class='edit' href='#'>Edit</a>" + ts + "</div>"
-			original := strings.Join(f.content, "\n")
-			entry := strings.Join(content, "\n")
-			form := "<form action='.' method='post' style='display:none;'><textarea name='content'>" + original +
-				"</textarea><input type='hidden' value='" + f.name + "'/></form>"
-			rendered, err := renderMarkdown([]byte(entry))
-			if err != nil {
-				log.StandardError(err)
-				continue
-			}
-			e = string(rendered)
-			if strings.ToLower(f.name) == "readme.md" {
-				rf = "<section class='entry readme " + tsc + "'>" + e + a + form + "</section>"
-			} else {
-				pf += "<section class='entry " + tsc + "'>" + e + a + form + "</section>"
-			}
-		}
-		pf = "<input type='hidden' value='" + tagList + "'/>" + rf + pf
-		return
-	}
-
-	pf := buildPlanfile(repos[*repository])
 
 	secret := readFile(*cookieKeyFile)
 	register := func(path string, handler func(*Context)) {
@@ -338,35 +416,36 @@ func main() {
 		})
 	}
 
+	header := []byte(`<!doctype html>
+<meta charset=utf-8>
+<title>` + html.EscapeString(*title) + `</title>
+<link href=/.static/` + assets["planfile.css"] + ` rel=stylesheet>
+<body><div id=body></div><script>AnalyticsHost = '` + *gaHost + `'; AnalyticsID = '` + *gaID + `'; Repo = `)
+
+	footer := []byte(`</script>
+<script src=/.static/` + assets["planfile.js"] + `></script>
+<noscript>Sorry, your browser needs <a href=http://enable-javascript.com>JavaScript enabled</a>.</noscript>
+`)
+
 	register("/", func(ctx *Context) {
 		mutex.RLock()
 		defer mutex.RUnlock()
-		if ctx.r.URL.Path != "/" {
-			http.NotFound(ctx.w, ctx.r)
-			return
-		}
-
-		ctx.Write(indexHead)
-		var bc string
-		var header string
-		username := ctx.GetCookie("user")
-		avatarURL := ctx.GetCookie("avatar-url")
-		if username != "" {
-			bc = "loggedin"
-			header = "<div class='container header'><div class='logo'><a id='logo'>planfile</a></div>" +
-				"<div class='user_controls'><a id='user'><img src='" + avatarURL + "'><span>" + username +
-				"</span></a><div><a href='/logout' id='logout'>Log out</a></div></div></div>"
+		ctx.Write(header)
+		ctx.Write(repoJSON)
+		avatar := ctx.GetCookie("avatar")
+		user := ctx.GetCookie("user")
+		if avatar != "" && user != "" {
+			ctx.Write([]byte("; User = '"))
+			ctx.Write([]byte(user + "';"))
+			ctx.Write([]byte("AvatarURL = '"))
+			ctx.Write([]byte(avatar + "';"))
 		} else {
-			header = "<div class='container header'><a href='/login' class='button login'>Log in with GitHub</a></div>"
+			ctx.Write([]byte("; User = AvatarURL = null;"))
 		}
-		ctx.Write([]byte("<link href='/static/" + assets["planfile.css"] + "' rel='stylesheet' type='text/css'></head>" +
-			"<body data-user='" + username + "' class='" + bc + "'>" + "<div id='body'><div id='home'>" + header +
-			"<article class='container planfiles'>" + pf + "</article></div><script src='/static/" + assets["planfile.js"] +
-			"' type='text/javascript'></script></body>"))
-
+		ctx.Write(footer)
 	})
 
-	register("/login", func(ctx *Context) {
+	register("/.login", func(ctx *Context) {
 		b := make([]byte, 20)
 		if n, err := rand.Read(b); err != nil || n != 20 {
 			ctx.Error("Couldn't access cryptographic device", err)
@@ -377,13 +456,14 @@ func main() {
 		ctx.Redirect(service.AuthCodeURL(s))
 	})
 
-	register("/logout", func(ctx *Context) {
+	register("/.logout", func(ctx *Context) {
+		ctx.ExpireCookie("avatar")
 		ctx.ExpireCookie("token")
 		ctx.ExpireCookie("user")
 		ctx.Redirect("/")
 	})
 
-	register("/oauth", func(ctx *Context) {
+	register("/.oauth", func(ctx *Context) {
 		s := ctx.FormValue("state")
 		if s == "" {
 			ctx.Redirect("/login")
@@ -414,17 +494,21 @@ func main() {
 			ctx.Error("Couldn't load user info", err)
 			return
 		}
+		ctx.SetCookie("avatar", user.AvatarURL)
 		ctx.SetCookie("user", user.Login)
-		ctx.SetCookie("avatar-url", user.AvatarURL)
 		ctx.Redirect("/")
 	})
 
-	register("/refresh", func(ctx *Context) {
+	register("/.refresh", func(ctx *Context) {
 		mutex.Lock()
 		defer mutex.Unlock()
-		repos[*repository] = LoadRepository(tarURL)
-		pf = buildPlanfile(repos[*repository])
-		ctx.Write([]byte("OK."))
+		err := repo.Load()
+		if err != nil {
+			log.Error("couldn't rebuild planfile info: %s", err)
+			ctx.Write([]byte("ERROR: " + err.Error()))
+			return
+		}
+		ctx.Write([]byte("OK"))
 	})
 
 	mimetypes := map[string]string{
@@ -459,11 +543,11 @@ func main() {
 	}
 
 	for _, path := range assets {
-		registerStatic("static/"+path, "/static/"+path)
+		registerStatic("static/"+path, "/.static/"+path)
 	}
 
 	log.Info("Listening on %s", *httpAddr)
-	err := http.ListenAndServe(*httpAddr, nil)
+	err = http.ListenAndServe(*httpAddr, nil)
 	if err != nil {
 		runtime.Error("couldn't bind to tcp socket: %s", err)
 	}

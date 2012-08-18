@@ -1,16 +1,12 @@
 # specific files/directories
 
-app/app
 assets.json
 config.yaml
 cookie.key
-run
-
-gzipped
-static
-
-gfx/background.png
-gfx/logo.png
+planfile
+run/
+static/
+www/
 
 # minified css/js files
 

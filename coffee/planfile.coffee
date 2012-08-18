@@ -9,26 +9,31 @@ define 'planfile', (exports, root) ->
   domly = amp.domly
   rmtree = amp.rmtree
 
-  [ANALYTICS_HOST, ANALYTICS_ID, repo, username, avatar] = root.DATA
+  [ANALYTICS_HOST, ANALYTICS_ID, repo, username, avatar, isAuth] = root.DATA
 
-  if ANALYTICS_ID and doc.location.hostname isnt 'localhost'
-    root._gaq = [
-      ['_setAccount', ANALYTICS_ID]
-      ['_setDomainName', ANALYTICS_HOST]
-      ['_trackPageview']
-    ]
-    (->
-      ga = doc.createElement 'script'
-      ga.type = 'text/javascript'
-      ga.async = true
-      if doc.location.protocol is 'https:'
-        ga.src = 'https://ssl.google-analytics.com/ga.js'
-      else
-        ga.src = 'http://www.google-analytics.com/ga.js'
-      s = doc.getElementsByTagName('script')[0]
-      s.parentNode.insertBefore(ga, s)
-      return
-    )()
+  initAnalytics = ->
+    if ANALYTICS_ID and doc.location.hostname isnt 'localhost'
+      root._gaq = [
+        ['_setAccount', ANALYTICS_ID]
+        ['_setDomainName', ANALYTICS_HOST]
+        ['_trackPageview']
+      ]
+      (->
+        ga = doc.createElement 'script'
+        ga.type = 'text/javascript'
+        ga.async = true
+        if doc.location.protocol is 'https:'
+          ga.src = 'https://ssl.google-analytics.com/ga.js'
+        else
+          ga.src = 'http://www.google-analytics.com/ga.js'
+        s = doc.getElementsByTagName('script')[0]
+        s.parentNode.insertBefore(ga, s)
+        return
+      )()
+    return
+
+  renderForm = (action) ->
+    form = ['form', action: action, method: "post"]
 
   renderHeader = ->
     if username
@@ -69,9 +74,11 @@ define 'planfile', (exports, root) ->
         tagTypes[tag] = 'custom'
       elems.push ['a', href: "/#{norm}", onclick: getToggler(tag), tag]
     domly elems, body
+    if isAuth
+      domly ['div', $: 'container', ['a', $: 'button', href: '/.refresh', 'Refresh']], body
 
   renderPlan = (typ, id, pf) ->
-    if id == 'root'
+    if id == '/'
       title = "Planfile"
     else
       title = pf.title or pf.path
@@ -95,6 +102,7 @@ define 'planfile', (exports, root) ->
     $planfiles = doc.$ 'planfiles'
 
   exports.run = ->
+    initAnalytics()
     for prop in ['XMLHttpRequest', 'addEventListener']
       if !root[prop]
         alert "Sorry, this app only works on newer browsers with HTML5 features :("

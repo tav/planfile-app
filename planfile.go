@@ -469,13 +469,15 @@ func main() {
 		})
 	}
 
+	anon := []byte(", null, null")
 	header := []byte(`<!doctype html>
 <meta charset=utf-8>
 <title>` + html.EscapeString(*title) + `</title>
+<link href="http://fonts.googleapis.com/css?family=Abel|Lato:300,400,700" rel=stylesheet>
 <link href=/.static/` + assets["planfile.css"] + ` rel=stylesheet>
-<body><div id=body></div><script>AnalyticsHost = '` + *gaHost + `'; AnalyticsID = '` + *gaID + `'; Repo = `)
+<body><script>DATA = ['` + *gaHost + `', '` + *gaID + `', `)
 
-	footer := []byte(`</script>
+	footer := []byte(`];</script>
 <script src=/.static/` + assets["planfile.js"] + `></script>
 <noscript>Sorry, your browser needs <a href=http://enable-javascript.com>JavaScript enabled</a>.</noscript>
 `)
@@ -488,12 +490,9 @@ func main() {
 		avatar := ctx.GetCookie("avatar")
 		user := ctx.GetCookie("user")
 		if avatar != "" && user != "" {
-			ctx.Write([]byte("; User = '"))
-			ctx.Write([]byte(user + "';"))
-			ctx.Write([]byte("AvatarURL = '"))
-			ctx.Write([]byte(avatar + "';"))
+			ctx.Write([]byte(", '" + user + "', '" + avatar + "'"))
 		} else {
-			ctx.Write([]byte("; User = AvatarURL = null;"))
+			ctx.Write(anon)
 		}
 		ctx.Write(footer)
 	})

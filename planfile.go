@@ -207,6 +207,9 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 				continue
 			}
 			v := bytes.TrimSpace(kv[1])
+			if len(v) == 0 {
+				continue
+			}
 			switch string(bytes.TrimSpace(kv[0])) {
 			case "id":
 				id = string(v)
@@ -253,11 +256,13 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 }
 
 type Repo struct {
-	Avatars  map[string]string    `json:"avatars"`
-	Files    map[string]*Planfile `json:"files"`
-	Latest   uint64               `json:"-"`
-	Sections map[string]*Planfile `json:"sections"`
-	Path     string               `json:"path"`
+	Avatars   map[string]string    `json:"avatars"`
+	Ordering  []string             `json:"ordering"`
+	Planfiles map[string]*Planfile `json:"planfiles"`
+	Sections  map[string]*Planfile `json:"sections"`
+	Path      string               `json:"path"`
+	TagMap    map[string][]string  `json:"tagmap"`
+	Tags      []string             `json:"tags"`
 }
 
 func (r *Repo) Load() error {
@@ -276,7 +281,8 @@ func (r *Repo) Load() error {
 	}
 	tr := tar.NewReader(zf)
 	avatars := map[string]string{}
-	files := map[string]*Planfile{}
+	planfiles := map[string]*Planfile{}
+	order := []string{}
 	sections := map[string]*Planfile{}
 	for {
 		hdr, err := tr.Next()
@@ -305,34 +311,80 @@ func (r *Repo) Load() error {
 				sections["root"] = pf
 			} else if section != "" {
 				sections[section] = pf
-			} else if id == "" {
-				log.Error("ID not found for: %s", filename)
-				continue
 			} else {
-				files[id] = pf
+				if id == "" {
+					log.Error("ID not found for: %s", filename)
+					id = filename
+				}
+				planfiles[id] = pf
 			}
 			for _, username := range userRefs {
 				if _, ok := avatars[username]; !ok {
 					user := &User{}
 					err = callGithub("/users/"+username, user)
-					if err != nil {
+					if err == nil {
+						avatars[username] = user.AvatarURL
+					} else {
 						log.Error("couldn't load github user info for %q: %s", username, err)
-						user.AvatarURL = "https://assets.github.com/images/gravatars/gravatar-140.png"
+						avatars[username] = "https://assets.github.com/images/gravatars/gravatar-140.png"
 					}
-					avatars[username] = user.AvatarURL
 				}
 			}
+		} else if ext == "order" && filename == "" {
+			log.Info("parsing: .order")
+			data, err := ioutil.ReadAll(tr)
+			if err != nil {
+				log.Error("reading tarball file %q: %s", hdr.Name, err)
+				continue
+			}
+			order = strings.Split(string(bytes.TrimSpace(data)), "\n")
 		}
 	}
+	log.Info("post-processing repo: %s", r.Path)
+	tagMap := map[string][]string{}
+	for id, f := range planfiles {
+		for _, tag := range f.Tags {
+			tagMap[tag] = append(tagMap[tag], id)
+		}
+	}
+	for section, _ := range sections {
+		if _, ok := tagMap[section]; !ok && section != "root" {
+			tagMap[section] = []string{}
+		}
+	}
+	i := 0
+	tags := make([]string, len(tagMap))
+	for tag, _ := range tagMap {
+		tags[i] = tag
+		i += 1
+	}
+	sort.StringSlice(tags).Sort()
+	ordering := []string{}
+	for _, id := range order {
+		if _, ok := planfiles[id]; ok {
+			ordering = append(ordering, id)
+		}
+	}
+	extra := []string{}
+	for id, _ := range planfiles {
+		if !contains(ordering, id) {
+			extra = append(extra, id)
+		}
+	}
+	sort.StringSlice(extra).Sort()
+	ordering = append(ordering, extra...)
 	r.Avatars = avatars
-	r.Files = files
+	r.Ordering = ordering
+	r.Planfiles = planfiles
 	r.Sections = sections
+	r.TagMap = tagMap
+	r.Tags = tags
 	log.Info("successfully loaded repo: %s", r.Path)
 	return nil
 }
 
 type User struct {
-	AvatarURL string `json:"avatar"`
+	AvatarURL string `json:"avatar_url"`
 	Login     string `json:"login"`
 }
 

@@ -144,6 +144,13 @@ define 'planfile', (exports, root) ->
       hide root.parentNode
     else
       show root.parentNode
+    tagLinks = doc.querySelectorAll('.tag-menu a')
+    for link in tagLinks
+      link.className = ''
+    for tag in tags
+      for link in tagLinks
+        if link.textContent is tag
+          link.className = 'clicked'
     for entry in entries
       name = entry.id.substr(9)
       if matchState(tags, repo.planfiles[name].tags)
@@ -159,10 +166,8 @@ define 'planfile', (exports, root) ->
       deps = false
       if !@.className
         pushUnique(tags, tag)
-        @.className = 'clicked'
       else
         deleteElement(tags, tag)
-        @.className = ''
       renderState(tags, deps)
 
   exports.run = ->

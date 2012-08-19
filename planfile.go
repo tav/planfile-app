@@ -17,6 +17,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -34,6 +35,12 @@ var (
 	tripleDash = []byte("---\n")
 )
 
+var (
+	CommitNotFound = errors.New("couldn't find the commit for the master branch")
+	NotAuthorised  = errors.New("not authorised!")
+	TreeNotFound   = errors.New("couldn't find the tree for the master branch")
+)
+
 type Context struct {
 	r      *http.Request
 	w      http.ResponseWriter
@@ -42,28 +49,47 @@ type Context struct {
 	token  *oauth.Token
 }
 
-func (ctx *Context) Call(path string, v interface{}, body io.Reader) error {
+func (ctx *Context) Call(path string, v interface{}, post interface{}, patch interface{}) error {
 	var (
 		err error
 		req *http.Request
 	)
-	if body == nil {
-		req, err = http.NewRequest("GET", "https://api.github.com"+path, nil)
-	} else {
+	if post != nil {
+		body := &bytes.Buffer{}
+		enc := json.NewEncoder(body)
+		err = enc.Encode(post)
+		if err != nil {
+			return err
+		}
 		req, err = http.NewRequest("POST", "https://api.github.com"+path, body)
+	} else if patch != nil {
+		body := &bytes.Buffer{}
+		enc := json.NewEncoder(body)
+		err = enc.Encode(patch)
+		if err != nil {
+			return err
+		}
+		req, err = http.NewRequest("PATCH", "https://api.github.com"+path, body)
+	} else {
+		req, err = http.NewRequest("GET", "https://api.github.com"+path, nil)
 	}
+
 	if err != nil {
 		return err
 	}
 	if ctx.token == nil {
-		tok, err := hex.DecodeString(ctx.GetCookie("token"))
+		token := ctx.GetCookie("token")
+		if token == "" {
+			return NotAuthorised
+		}
+		tok, err := hex.DecodeString(token)
 		if err != nil {
 			ctx.ExpireCookie("token")
 			return err
 		}
+		ctx.token = &oauth.Token{}
 		err = json.Unmarshal(tok, ctx.token)
 		if err != nil {
-			ctx.ExpireCookie("token")
 			return err
 		}
 	}
@@ -73,6 +99,9 @@ func (ctx *Context) Call(path string, v interface{}, body io.Reader) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if post != nil && resp.StatusCode != 201 {
+		return errors.New("github: object not created: " + path)
+	}
 	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(v)
 	return err
@@ -289,6 +318,7 @@ type Repo struct {
 	Path      string               `json:"path"`
 	TagMap    map[string][]string  `json:"tagmap"`
 	Tags      []string             `json:"tags"`
+	info      *RepoInfo
 }
 
 func (r *Repo) Load() error {
@@ -405,8 +435,152 @@ func (r *Repo) Load() error {
 	r.Sections = sections
 	r.TagMap = tagMap
 	r.Tags = tags
+	r.info = nil
 	log.Info("successfully loaded repo: %s", r.Path)
 	return nil
+}
+
+func (r *Repo) Exists(path string) bool {
+	if path == "" || path == ".md" {
+		return true
+	}
+	path = strings.ToLower(path)
+	for _, file := range r.info.Files {
+		if strings.ToLower(file) == path {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Repo) Modify(ctx *Context, path, content, message string) error {
+	log.Info("%q %q %q", path, message, content)
+	tree := &CommitTree{}
+	if err := ctx.Call("/repos/"+r.Path+"/git/trees", tree, &TreeUpdate{
+		Base: r.info.Tree,
+		Elems: []*TreeElem{{
+			Content: content,
+			Mode:    "100644",
+			Path:    path,
+			Type:    "blob",
+		}},
+	}, nil); err != nil {
+		log.Error("1")
+		return err
+	}
+	if tree.SHA == "" {
+		return errors.New("couldn't save tree to github: " + path)
+	}
+	commit := &CommitTree{}
+	if err := ctx.Call("/repos/"+r.Path+"/git/commits", commit, &CommitUpdate{
+		Message: message,
+		Parents: []string{r.info.Commit},
+		Tree:    tree.SHA,
+	}, nil); err != nil {
+		log.Error("2")
+		return err
+	}
+	if commit.SHA == "" {
+		return errors.New("couldn't save commit to github: " + path)
+	}
+	ref := &Ref{}
+	if err := ctx.Call("/repos/"+r.Path+"/git/refs/heads/master", ref, nil, &RefUpdate{
+		SHA: commit.SHA,
+	}); err != nil {
+		log.Error("3")
+		return err
+	}
+	if ref.Object.SHA == "" {
+		return errors.New("couldn't update master on github: " + path)
+	}
+	return nil
+}
+
+func (r *Repo) UpdateInfo() error {
+	if r.info != nil {
+		return nil
+	}
+	master := &Ref{}
+	if err := callGithub("/repos/"+r.Path+"/git/refs/heads/master", master); err != nil {
+		return err
+	}
+	if master.Object == nil || master.Object.SHA == "" {
+		return CommitNotFound
+	}
+	commit := &Commit{}
+	if err := callGithub("/repos/"+r.Path+"/git/commits/"+master.Object.SHA, commit); err != nil {
+		return err
+	}
+	if commit.Tree == nil || commit.Tree.SHA == "" {
+		return TreeNotFound
+	}
+	tree := &Tree{}
+	if err := callGithub("/repos/"+r.Path+"/git/trees/"+commit.Tree.SHA, tree); err != nil {
+		return err
+	}
+	files := []string{}
+	for _, elem := range tree.Elems {
+		if elem.Path == "" {
+			continue
+		}
+		files = append(files, strings.ToLower(elem.Path))
+	}
+	r.info = &RepoInfo{
+		Commit: master.Object.SHA,
+		Files:  files,
+		Tree:   commit.Tree.SHA,
+	}
+	log.Info("REFS: %s %s", r.info.Commit, r.info.Files)
+	return nil
+}
+
+type Commit struct {
+	Tree *CommitTree `json:"tree"`
+}
+
+type CommitTree struct {
+	SHA string `json:"sha"`
+}
+
+type CommitUpdate struct {
+	Message string   `json:"message"`
+	Parents []string `json:"parents"`
+	Tree    string   `json:"tree"`
+}
+
+type RefInfo struct {
+	SHA  string `json:"sha"`
+	Type string `json:"type"`
+}
+
+type Ref struct {
+	Object *RefInfo `json:"object"`
+}
+
+type RefUpdate struct {
+	SHA string `json:"sha"`
+}
+
+type RepoInfo struct {
+	Commit string
+	Files  []string
+	Tree   string
+}
+
+type Tree struct {
+	Elems []*TreeElem `json:"tree"`
+}
+
+type TreeElem struct {
+	Content string `json:"content"`
+	Path    string `json:"path"`
+	Mode    string `json:"mode"`
+	Type    string `json:"type"`
+}
+
+type TreeUpdate struct {
+	Base  string      `json:"base_tree"`
+	Elems []*TreeElem `json:"tree"`
 }
 
 type User struct {
@@ -550,6 +724,63 @@ func main() {
 		ctx.Redirect("/")
 	})
 
+	saveItem := func(ctx *Context, update bool) {
+		mutex.Lock()
+		defer mutex.Unlock()
+		if !ctx.IsAuthorised(repo) {
+			ctx.Write([]byte("ERROR: Not Authorised!"))
+			return
+		}
+		err := repo.UpdateInfo()
+		if err != nil {
+			ctx.Error("Couldn't update repo info", err)
+		}
+		var id, message string
+		if update {
+			id = ctx.FormValue("id")
+		} else {
+			baseID := ctx.FormValue("id")
+			id = baseID
+			count := 0
+			for repo.Exists(id + ".md") {
+				count += 1
+				id = fmt.Sprintf("%s%d", baseID, count)
+			}
+		}
+		content := ctx.FormValue("content")
+		tags := ctx.FormValue("tags")
+		title := ctx.FormValue("title")
+		content = fmt.Sprintf(`---
+id: %s
+tags: %s
+title: %s
+---
+
+%s`, id, tags, title, content)
+		if title == "" {
+			title = id
+		}
+		if update {
+			message = "Updated: " + title
+		} else {
+			message = "Added: " + title
+		}
+		err = repo.Modify(ctx, id+".md", content, message)
+		if err != nil {
+			if update {
+				ctx.Error("Couldn't update item", err)
+			} else {
+				ctx.Error("Couldn't save new item", err)
+			}
+			return
+		}
+		ctx.Redirect("/.refresh")
+	}
+
+	register("/.new", func(ctx *Context) {
+		saveItem(ctx, false)
+	})
+
 	register("/.oauth", func(ctx *Context) {
 		s := ctx.FormValue("state")
 		if s == "" {
@@ -576,7 +807,7 @@ func main() {
 		ctx.SetCookie("token", hex.EncodeToString(jtok))
 		ctx.token = tok
 		user := &User{}
-		err = ctx.Call("/user", user, nil)
+		err = ctx.Call("/user", user, nil, nil)
 		if err != nil {
 			ctx.Error("Couldn't load user info", err)
 			return
@@ -589,7 +820,7 @@ func main() {
 	register("/.preview", func(ctx *Context) {
 		rendered, err := renderMarkdown([]byte(ctx.FormValue("content")))
 		if err != nil {
-			ctx.Error("couldn't render markdown: %s", err)
+			ctx.Error("Couldn't render Markdown", err)
 			return
 		}
 		ctx.Write(rendered)
@@ -606,6 +837,11 @@ func main() {
 		if err != nil {
 			log.Error("couldn't rebuild planfile info: %s", err)
 			ctx.Write([]byte("ERROR: " + err.Error()))
+			return
+		}
+		repoJSON, err = json.Marshal(repo)
+		if err != nil {
+			ctx.Error("Couldn't encode repo data during refresh", err)
 			return
 		}
 		ctx.Redirect("/")

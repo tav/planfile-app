@@ -668,7 +668,7 @@ func main() {
 		})
 	}
 
-	anon := []byte(", null, null, false")
+	anon := []byte(", null, null, '', false")
 	authFalse := []byte("', false")
 	authTrue := []byte("', true")
 
@@ -692,7 +692,7 @@ func main() {
 		avatar := ctx.GetCookie("avatar")
 		user := ctx.GetCookie("user")
 		if avatar != "" && user != "" {
-			ctx.Write([]byte(", '" + user + "', '" + avatar))
+			ctx.Write([]byte(", '" + user + "', '" + avatar + "', '" + ctx.GetCookie("xsrf")))
 			if ctx.IsAuthorised(repo) {
 				ctx.Write(authTrue)
 			} else {

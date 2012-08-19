@@ -9,7 +9,18 @@ define 'planfile', (exports, root) ->
   domly = amp.domly
   rmtree = amp.rmtree
 
-  [ANALYTICS_HOST, ANALYTICS_ID, repo, username, avatar, isAuth] = root.DATA
+  tagTypes = {}
+  $content = $planfiles = $preview = null
+
+  [ANALYTICS_HOST, ANALYTICS_ID, repo, username, avatar, xsrf, isAuth] = root.DATA
+
+  ajax = (url, data, callback) ->
+    obj = new XMLHttpRequest()
+    obj.onreadystatechange = ->
+      callback obj if obj.readyState is 4
+    obj.open "POST", url, true
+    obj.send data
+    obj
 
   initAnalytics = ->
     if ANALYTICS_ID and doc.location.hostname isnt 'localhost'
@@ -49,12 +60,16 @@ define 'planfile', (exports, root) ->
       ]
     domly header, body
 
+  showPreview = ->
+    form = new FormData()
+    form.append 'content', $content.value
+    ajax "/.preview", form, (xhr) ->
+      if xhr.status is 200
+        $preview.innerHTML = xhr.responseText
+
   getToggler = (tag) ->
     ->
       alert tag
-
-  tagTypes = {}
-  $planfiles = null
 
   renderBar = ->
     elems = ['div', $: 'container tag-menu']
@@ -94,30 +109,24 @@ define 'planfile', (exports, root) ->
       elems.push renderPlan('overview', id, pf)
     for id, pf of repo.planfiles
       elems.push renderPlan('planfile', id, pf)
-    domly elems, body
+    $planfiles = domly elems, body, true
     for id, pf of repo.sections
       doc.$("overview-#{id}").innerHTML = pf.rendered
     for id, pf of repo.planfiles
       doc.$("planfile-#{id}").innerHTML = pf.rendered
-    $planfiles = doc.$ 'planfiles'
 
   exports.run = ->
     initAnalytics()
-    for prop in ['XMLHttpRequest', 'addEventListener']
+    for prop in ['addEventListener', 'FormData', 'XMLHttpRequest']
       if !root[prop]
         alert "Sorry, this app only works on newer browsers with HTML5 features :("
         return
     renderHeader()
     renderBar()
     renderPlans()
+    $content = domly ['textarea', ''], body, true
+    domly ['a', onclick: showPreview, 'Render Preview'], body
+    $preview = domly ['div', id: 'preview'], body, true
     $planfiles.style.display = 'block'
-
-  ajax = (url, method, callback, params) ->
-    obj = new XMLHttpRequest()
-    obj.onreadystatechange = ->
-      callback obj if obj.readyState is 4
-    obj.open method, url, true
-    obj.send params
-    obj
 
 planfile.run()

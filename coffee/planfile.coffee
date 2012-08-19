@@ -118,6 +118,15 @@ define 'planfile', (exports, root) ->
     n = '#' + tag
     tagTypes[n] and tagTypes[n] is 'hashtag'
 
+  join = (strings, sep) ->
+    joined = ''
+    for string, id in strings
+      if id <= (strings.length - 2)
+        joined += string + sep
+      else
+        joined += string
+    joined
+
   buildState = ->
      tags = location.pathname.substr(1).split('/')
      deleteElement tags, ''
@@ -138,6 +147,13 @@ define 'planfile', (exports, root) ->
     stags.length is count
 
   renderState = (tags, deps) ->
+    rTags = []
+    for tag in tags
+      if tag[0] is '#'
+        rTags.push tag.substr(1)
+      else
+        rTags.push tag
+    history.pushState('data', '', location.origin + '/' + join(rTags, '/'))
     entries = doc.querySelectorAll('section.entry div[id|=planfile]')
     root =  doc.querySelector('div[id*=overview-]')
     if tags.length isnt 0

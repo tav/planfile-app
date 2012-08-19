@@ -160,14 +160,16 @@ define 'planfile', (exports, root) ->
         count += 1
     stags.length is count
 
-  renderState = (tags, deps) ->
+  tagString = (tags) ->
     rTags = []
     for tag in tags
       if tag[0] is '#'
         rTags.push tag.substr(1)
       else
         rTags.push tag
-    history.pushState('data', '', location.origin + '/' + join(rTags, '/'))
+    rTags
+
+  renderState = (tags, deps) ->
     entries = doc.querySelectorAll('section.entry div[id|=planfile]')
     root =  doc.querySelector('div[id*=overview-]')
     if tags.length isnt 0
@@ -188,6 +190,13 @@ define 'planfile', (exports, root) ->
       else
         hide entry.parentNode
 
+  window.onpopstate = (e) ->
+    if !e.state
+      [tags, deps] = buildState()
+      renderState(tags, deps)
+    else
+      renderState(e.state.tags, e.state.deps)
+
   getToggler = (tag) ->
     ->
       e = window.event
@@ -198,6 +207,7 @@ define 'planfile', (exports, root) ->
         pushUnique(tags, tag)
       else
         deleteElement(tags, tag)
+      history.pushState({tags: tags, deps: deps}, '', '/' + join(tagString(tags), '/'))
       renderState(tags, deps)
 
   exports.run = ->

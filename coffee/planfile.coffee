@@ -49,10 +49,6 @@ define 'planfile', (exports, root) ->
       ]
     domly header, body
 
-  getToggler = (tag) ->
-    ->
-      alert tag
-
   tagTypes = {}
   $planfiles = null
 
@@ -101,6 +97,74 @@ define 'planfile', (exports, root) ->
       doc.$("planfile-#{id}").innerHTML = pf.rendered
     $planfiles = doc.$ 'planfiles'
 
+  hide = (element) ->
+    element.setAttribute 'style', 'display: none;'
+
+  show = (element) ->
+    element.setAttribute 'style', ''
+
+  deleteElement = (array, element) ->
+    if element in array
+      array.splice(array.indexOf(element), 1)
+
+  pushUnique = (array, element) ->
+    if element not in array
+      array.push element
+
+  endsWith = (st, suf) ->
+    st.length >= suf.length and st.substr(st.length - suf.length) is suf
+
+  isHashTag = (tag) ->
+    n = '#' + tag
+    tagTypes[n] and tagTypes[n] is 'hashtag'
+
+  buildState = ->
+     tags = location.pathname.substr(1).split('/')
+     deleteElement tags, ''
+     for tag in tags
+       if isHashTag tag
+         deleteElement tags, tag
+         pushUnique tags, '#' + tag
+     deps = endsWith(location.pathname, ':deps')
+     [tags, deps]
+
+  [tags, deps] = [[], false]
+
+  matchState = (stags, tags) ->
+    count = 0
+    for t in stags
+      if t in tags
+        count += 1
+    stags.length is count
+
+  renderState = (tags, deps) ->
+    entries = doc.querySelectorAll('section.entry div[id|=planfile]')
+    root =  doc.querySelector('div[id*=overview-]')
+    if tags.length isnt 0
+      hide root.parentNode
+    else
+      show root.parentNode
+    for entry in entries
+      name = entry.id.substr(9)
+      if matchState(tags, repo.planfiles[name].tags)
+        show entry.parentNode
+      else
+        hide entry.parentNode
+
+  getToggler = (tag) ->
+    ->
+      e = window.event
+      e.stopPropagation()
+      e.preventDefault()
+      deps = false
+      if !@.className
+        pushUnique(tags, tag)
+        @.className = 'clicked'
+      else
+        deleteElement(tags, tag)
+        @.className = ''
+      renderState(tags, deps)
+
   exports.run = ->
     initAnalytics()
     for prop in ['XMLHttpRequest', 'addEventListener']
@@ -110,6 +174,8 @@ define 'planfile', (exports, root) ->
     renderHeader()
     renderBar()
     renderPlans()
+    [tags, deps] = buildState()
+    renderState(tags, deps)
     $planfiles.style.display = 'block'
 
   ajax = (url, method, callback, params) ->

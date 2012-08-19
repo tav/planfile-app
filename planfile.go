@@ -586,6 +586,15 @@ func main() {
 		ctx.Redirect("/")
 	})
 
+	register("/.preview", func(ctx *Context) {
+		rendered, err := renderMarkdown([]byte(ctx.FormValue("content")))
+		if err != nil {
+			ctx.Error("couldn't render markdown: %s", err)
+			return
+		}
+		ctx.Write(rendered)
+	})
+
 	register("/.refresh", func(ctx *Context) {
 		mutex.Lock()
 		defer mutex.Unlock()

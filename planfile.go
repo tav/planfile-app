@@ -73,7 +73,6 @@ func (ctx *Context) Call(path string, v interface{}, post interface{}, patch int
 	} else {
 		req, err = http.NewRequest("GET", "https://api.github.com"+path, nil)
 	}
-
 	if err != nil {
 		return err
 	}
@@ -321,6 +320,19 @@ type Repo struct {
 	info      *RepoInfo
 }
 
+func (r *Repo) Exists(path string) bool {
+	if path == "" || path == ".md" {
+		return true
+	}
+	path = strings.ToLower(path)
+	for _, file := range r.info.Files {
+		if strings.ToLower(file) == path {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Repo) Load() error {
 	log.Info("loading repo: %s", r.Path)
 	url := "https://github.com/" + r.Path + "/tarball/master"
@@ -438,19 +450,6 @@ func (r *Repo) Load() error {
 	r.info = nil
 	log.Info("successfully loaded repo: %s", r.Path)
 	return nil
-}
-
-func (r *Repo) Exists(path string) bool {
-	if path == "" || path == ".md" {
-		return true
-	}
-	path = strings.ToLower(path)
-	for _, file := range r.info.Files {
-		if strings.ToLower(file) == path {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *Repo) Modify(ctx *Context, path, content, message string) error {
@@ -669,7 +668,7 @@ func main() {
 		})
 	}
 
-	anon := []byte(", null, null, false")
+	anon := []byte(", null, null, '', false")
 	authFalse := []byte("', false")
 	authTrue := []byte("', true")
 
@@ -693,7 +692,7 @@ func main() {
 		avatar := ctx.GetCookie("avatar")
 		user := ctx.GetCookie("user")
 		if avatar != "" && user != "" {
-			ctx.Write([]byte(", '" + user + "', '" + avatar))
+			ctx.Write([]byte(", '" + user + "', '" + avatar + "', '" + ctx.GetCookie("xsrf")))
 			if ctx.IsAuthorised(repo) {
 				ctx.Write(authTrue)
 			} else {
@@ -712,7 +711,7 @@ func main() {
 			return
 		}
 		s := hex.EncodeToString(b)
-		ctx.SetCookie("state", s)
+		ctx.SetCookie("xsrf", s)
 		ctx.Redirect(service.AuthCodeURL(s))
 	})
 
@@ -721,14 +720,21 @@ func main() {
 		ctx.ExpireCookie("avatar")
 		ctx.ExpireCookie("token")
 		ctx.ExpireCookie("user")
+		ctx.ExpireCookie("xsrf")
 		ctx.Redirect("/")
 	})
+
+	notAuthorised := []byte("ERROR: Not Authorised!")
 
 	saveItem := func(ctx *Context, update bool) {
 		mutex.Lock()
 		defer mutex.Unlock()
 		if !ctx.IsAuthorised(repo) {
-			ctx.Write([]byte("ERROR: Not Authorised!"))
+			ctx.Write(notAuthorised)
+			return
+		}
+		if !isEqual([]byte(ctx.FormValue("xsrf")), []byte(ctx.GetCookie("xsrf"))) {
+			ctx.Write(notAuthorised)
 			return
 		}
 		err := repo.UpdateInfo()
@@ -777,6 +783,10 @@ title: %s
 		ctx.Redirect("/.refresh")
 	}
 
+	register("/.modify", func(ctx *Context) {
+		saveItem(ctx, true)
+	})
+
 	register("/.new", func(ctx *Context) {
 		saveItem(ctx, false)
 	})
@@ -787,12 +797,11 @@ title: %s
 			ctx.Redirect("/login")
 			return
 		}
-		if !isEqual([]byte(s), []byte(ctx.GetCookie("state"))) {
-			ctx.ExpireCookie("state")
+		if !isEqual([]byte(s), []byte(ctx.GetCookie("xsrf"))) {
+			ctx.ExpireCookie("xsrf")
 			ctx.Redirect("/login")
 			return
 		}
-		ctx.ExpireCookie("state")
 		t := &oauth.Transport{OAuthService: service}
 		tok, err := t.ExchangeAuthorizationCode(ctx.FormValue("code"))
 		if err != nil {
@@ -830,7 +839,7 @@ title: %s
 		mutex.Lock()
 		defer mutex.Unlock()
 		if !ctx.IsAuthorised(repo) {
-			ctx.Write([]byte("ERROR: Not Authorised!"))
+			ctx.Write(notAuthorised)
 			return
 		}
 		err := repo.Load()

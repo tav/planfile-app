@@ -25,8 +25,10 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
@@ -181,6 +183,15 @@ func (ctx *Context) SetHeader(attr, val string) {
 
 func (ctx *Context) Write(data []byte) (int, error) {
 	return ctx.w.Write(data)
+}
+
+type GzipWriter struct {
+	io.Writer
+	http.ResponseWriter
+}
+
+func (w GzipWriter) Write(b []byte) (int, error) {
+	return w.Writer.Write(b)
 }
 
 func callGithub(path string, v interface{}) error {
@@ -655,16 +666,30 @@ func main() {
 	}
 
 	secret := readFile(*cookieKeyFile)
-	register := func(path string, handler func(*Context)) {
+	newContext := func(w http.ResponseWriter, r *http.Request) *Context {
+		return &Context{
+			r:      r,
+			w:      w,
+			secret: secret,
+			secure: *secureMode,
+		}
+	}
+
+	register := func(path string, handler func(*Context), usegzip ...bool) {
+		gzippable := len(usegzip) > 0 && usegzip[0]
 		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-			ctx := &Context{
-				r:      r,
-				w:      w,
-				secret: secret,
-				secure: *secureMode,
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			if gzippable && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+				buf := &bytes.Buffer{}
+				enc := gzip.NewWriter(buf)
+				handler(newContext(GzipWriter{enc, w}, r))
+				enc.Close()
+				w.Header().Set("Content-Encoding", "gzip")
+				w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+				buf.WriteTo(w)
+			} else {
+				handler(newContext(w, r))
 			}
-			ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
-			handler(ctx)
 		})
 	}
 
@@ -702,7 +727,7 @@ func main() {
 			ctx.Write(anon)
 		}
 		ctx.Write(footer)
-	})
+	}, true)
 
 	register("/.login", func(ctx *Context) {
 		b := make([]byte, 20)
@@ -833,7 +858,7 @@ title: %s
 			return
 		}
 		ctx.Write(rendered)
-	})
+	}, true)
 
 	register("/.refresh", func(ctx *Context) {
 		mutex.Lock()
@@ -877,13 +902,13 @@ title: %s
 			register(urlpath, func(ctx *Context) {
 				ctx.SetHeader("Content-Type", ctype)
 				ctx.Write(readFile(filepath))
-			})
+			}, strings.HasPrefix(ctype, "text/"))
 		} else {
 			content := readFile(filepath)
 			register(urlpath, func(ctx *Context) {
 				ctx.SetHeader("Content-Type", ctype)
 				ctx.Write(content)
-			})
+			}, strings.HasPrefix(ctype, "text/"))
 		}
 	}
 
@@ -892,7 +917,12 @@ title: %s
 	}
 
 	log.Info("Listening on %s", *httpAddr)
-	err = http.ListenAndServe(*httpAddr, nil)
+	server := &http.Server{
+		Addr:         *httpAddr,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+	err = server.ListenAndServe()
 	if err != nil {
 		runtime.Error("couldn't bind to tcp socket: %s", err)
 	}

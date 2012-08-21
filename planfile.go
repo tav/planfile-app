@@ -5,6 +5,7 @@ package main
 
 import (
 	"amp/crypto"
+	"amp/httputil"
 	"amp/log"
 	"amp/oauth"
 	"amp/optparse"
@@ -679,7 +680,7 @@ func main() {
 		gzippable := len(usegzip) > 0 && usegzip[0]
 		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			if gzippable && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			if gzippable && httputil.Parse(r, "Accept-Encoding").Accepts("gzip") {
 				buf := &bytes.Buffer{}
 				enc := gzip.NewWriter(buf)
 				handler(newContext(GzipWriter{enc, w}, r))
@@ -819,12 +820,12 @@ title: %s
 	register("/.oauth", func(ctx *Context) {
 		s := ctx.FormValue("state")
 		if s == "" {
-			ctx.Redirect("/login")
+			ctx.Redirect("/.login")
 			return
 		}
 		if !isEqual([]byte(s), []byte(ctx.GetCookie("xsrf"))) {
 			ctx.ExpireCookie("xsrf")
-			ctx.Redirect("/login")
+			ctx.Redirect("/.login")
 			return
 		}
 		t := &oauth.Transport{OAuthService: service}

@@ -141,7 +141,7 @@ define 'planfile', (exports, root) ->
         joined += string
     joined
 
-  [planfiles, tags, deps] = [[], tags, false]
+  [planfiles, tags, deps] = [[], [], false]
 
   buildState = (tags) ->
     split = location.pathname.replace(':deps', '').split('/')

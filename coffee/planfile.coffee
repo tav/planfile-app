@@ -141,34 +141,34 @@ define 'planfile', (exports, root) ->
         joined += string
     joined
 
+  [planfiles, tags, deps] = [[], tags, false]
+
   buildState = (tags) ->
-    split = location.pathname.split('/')
+    split = location.pathname.replace(':deps', '').split('/')
+    pfl = []
     if split[1] is '.item'
       pfl = [split[2]]
       tags = []
     else
       if !tags
-        tags = location.pathname.substr(1).split('/')
+        tags = location.pathname.replace(':deps', '').substr(1).split('/')
       deleteElement tags, ''
       for tag in tags
         if isHashTag tag
           deleteElement tags, tag
           pushUnique tags, '#' + tag
-      deps = endsWith(location.pathname, ':deps')
-      pfl = []
       for k, v of repo.planfiles
         if matchState(tags, v.tags)
           pfl.push k
     # Build dependencies
+    deps = endsWith(location.pathname, ':deps')
     if deps
       altPfl = []
       for pf in pfl
-        for dep in pf.depends
+        for dep in repo.planfiles[pf].depends
           pushUnique altPfl, dep
       pfl = altPfl
     [pfl, tags]
-
-  [planfiles, tags] = [[], false]
 
   matchState = (stags, tags) ->
     count = 0
@@ -207,9 +207,14 @@ define 'planfile', (exports, root) ->
         else
           hide entry
     else
-      show root.parentNode
-      for entry in entries
-        show entry
+      if !deps
+        show root.parentNode
+        for entry in entries
+          show entry
+      else
+        hide root.parentNode
+        for entry in entries
+          hide entry
 
   window.onpopstate = (e) ->
     if !e.state

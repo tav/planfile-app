@@ -141,24 +141,41 @@ define 'planfile', (exports, root) ->
         joined += string
     joined
 
-  buildState = ->
-     tags = location.pathname.substr(1).split('/')
-     deleteElement tags, ''
-     for tag in tags
-       if isHashTag tag
-         deleteElement tags, tag
-         pushUnique tags, '#' + tag
-     deps = endsWith(location.pathname, ':deps')
-     [tags, deps]
+  buildState = (tags) ->
+    split = location.pathname.split('/')
+    if split[1] is '.item'
+      pfl = [split[2]]
+      tags = []
+    else
+      if !tags
+        tags = location.pathname.substr(1).split('/')
+      deleteElement tags, ''
+      for tag in tags
+        if isHashTag tag
+          deleteElement tags, tag
+          pushUnique tags, '#' + tag
+      deps = endsWith(location.pathname, ':deps')
+      pfl = []
+      for k, v of repo.planfiles
+        if matchState(tags, v.tags)
+          pfl.push k
+    # Build dependencies
+    if deps
+      altPfl = []
+      for pf in pfl
+        for dep in pf.depends
+          pushUnique altPfl, dep
+      pfl = altPfl
+    [pfl, tags]
 
-  [tags, deps] = [[], false]
+  [planfiles, tags] = [[], false]
 
   matchState = (stags, tags) ->
     count = 0
     for t in stags
       if t in tags
         count += 1
-    stags.length is count
+    stags.length is count and count > 0
 
   tagString = (tags) ->
     rTags = []
@@ -169,33 +186,37 @@ define 'planfile', (exports, root) ->
         rTags.push tag
     rTags
 
-  renderState = (tags, deps) ->
+  renderState = (planfiles, tags) ->
     entries = doc.querySelectorAll('section.entry div[id|=planfile]')
     root =  doc.querySelector('div[id*=overview-]')
-    if tags.length isnt 0
-      hide root.parentNode
-    else
-      show root.parentNode
     tagLinks = doc.querySelectorAll('.tag-menu a')
+    # Render active tags
     for link in tagLinks
       link.className = ''
     for tag in tags
       for link in tagLinks
         if link.textContent is tag
           link.className = 'clicked'
-    for entry in entries
-      name = entry.id.substr(9)
-      if matchState(tags, repo.planfiles[name].tags)
-        show entry.parentNode
-      else
-        hide entry.parentNode
+    # Check if any planfiles are specified
+    if planfiles.length isnt 0
+      hide root.parentNode
+      for entry in entries
+        name = entry.id.substr(9)
+        if name in planfiles
+          show entry
+        else
+          hide entry
+    else
+      show root.parentNode
+      for entry in entries
+        show entry
 
   window.onpopstate = (e) ->
     if !e.state
-      [tags, deps] = buildState()
-      renderState(tags, deps)
+      [planfiles, tags] = buildState()
+      renderState(planfiles, tags)
     else
-      renderState(e.state.tags, e.state.deps)
+      renderState(e.state.planfiles, e.state.tags)
 
   getToggler = (tag) ->
     ->
@@ -207,8 +228,9 @@ define 'planfile', (exports, root) ->
         pushUnique(tags, tag)
       else
         deleteElement(tags, tag)
-      history.pushState({tags: tags, deps: deps}, '', '/' + join(tagString(tags), '/'))
-      renderState(tags, deps)
+      [planfiles, tags] = buildState(tags)
+      history.pushState({planfiles: planfiles, tags: tags}, '', '/' + join(tagString(tags), '/'))
+      renderState(planfiles, tags)
 
   exports.run = ->
     initAnalytics()
@@ -219,8 +241,8 @@ define 'planfile', (exports, root) ->
     renderHeader()
     renderBar()
     renderPlans()
-    [tags, deps] = buildState()
-    renderState(tags, deps)
+    [planfiles, tags] = buildState()
+    renderState(planfiles, tags)
     $content = domly ['textarea', ''], body, true
     domly ['a', onclick: showPreview, 'Render Preview'], body
     $preview = domly ['div', id: 'preview'], body, true

@@ -4,11 +4,14 @@
 // * General styles
 
 $grey: #777
+$midgrey: #9C9C9C
 $lightgrey: #EFEFEF
 $red: red
 $lightred: #F11
 $blue: #01A0EB
 $lightblue: #08B0FF
+$green: #00AD37
+$lightgreen: #03C942
 
 *
   padding: 0
@@ -104,6 +107,10 @@ p
   font-weight: 700
   border-radius: 5px
   color: #333
+  &.edit
+    background: $green
+    &:hover
+      background: $lightgreen
   &.action
     background: #E9E9E9
     color: #222
@@ -112,7 +119,7 @@ p
   &.login, &.logout
     color: white
     text-decoration: none
-    padding: 10px
+    padding: 10px 11px 13px
     background: $blue
     margin: 20px 0
     line-height: 39px
@@ -129,6 +136,7 @@ p
       height: 25px
       padding-left: 9px
       width: 25px
+      vertical-align: middle
 
 .sidebar
   background: black
@@ -142,29 +150,68 @@ p
       &:hover
         background: $lightred
 
+.editor-controls
+  text-align: right
+  a
+    background: $grey
+    color: white
+    padding: 3px 8px
+    display: inline-block
+    text-decoration: none
+    margin-left: 5px
+    cursor: pointer    
+    &:hover
+      background: $midgrey
+
 .editor
+  border-top: 1px solid grey
   clear: both
+  padding-top: 20px
+  .controls
+    margin: 10px 0
+    a
+      background: $lightgrey
+      color: $grey
+      margin-right: 10px
+      cursor: pointer
+      padding: 5px 10px 
+      border-radius: 3px
+      &:hover
+        color: #A3A3A3
+  #preview
+    margin: 20px 0
   textarea
-    width: 652px
-    border-radius: 0 0 3px 3px
+    width: 937px
     border: 1px solid #CCC
-    height: 150px
-    margin-bottom: 10px
     border-top: 0
+    height: 150px
     padding: 10px
-    font-size: 13px
+    color: $grey
+    font-size: 15px
+    font-family: monospace
   input
-    &[type=text]
-      width: 652px
+    color: $grey
+    &[type=text]    
+      width: 937px
       border: 1px solid #CCC
       padding: 15px 10px
-      border-radius: 3px 3px 0 0
       font-size: 13px
+      &[name=title]
+        border-radius: 3px 3px 0 0
+      &[name=tags]
+        border-radius: 3px
+        margin: 10px 0
     &[type=submit]
       cursor: pointer
-  input,
-  textarea
-    color: $grey
+      padding: 5px 10px
+      border: none
+      border-radius: 3px
+      font-size: 15px
+      margin-right: 10px
+      background: $green
+      color: white
+      &:hover
+        background: $lightgreen
 
   .button
     float: right
@@ -251,7 +298,7 @@ p.title
         padding: 4px 5px
         font-size: 10px
         float: left
-        display: none
+        cursor: pointer  
       span
         color: #818181
         text-decoration: none
@@ -285,7 +332,9 @@ p.title
 
 .syntax
   font-size: 13px
-  margin-bottom: 25px  
+  margin-bottom: 25px
+  pre
+    line-height: 1.8em
   .c, .cm, .cp, .cs, .c1
     color: #919191
   .err

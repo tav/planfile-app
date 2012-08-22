@@ -11,6 +11,7 @@ define 'planfile', (exports, root) ->
 
   tagTypes = {}
   $content = $planfiles = $preview = null
+  [planfiles, sections, tags, deps] = [[], [], [], false]
 
   [ANALYTICS_HOST, ANALYTICS_ID, repo, username, avatar, xsrf, isAuth] = root.DATA
 
@@ -67,49 +68,15 @@ define 'planfile', (exports, root) ->
       if xhr.status is 200
         $preview.innerHTML = xhr.responseText
 
-  renderBar = ->
-    elems = ['div', $: 'container tag-menu']
-    tags = repo.tags.slice(0)
-    tags.reverse()
-    for tag in tags
-      norm = tag
-      s = tag[0]
-      if s is '#'
-        tagTypes[tag] = 'hashtag'
-        norm = tag.slice 1
-      else if s is '@'
-        tagTypes[tag] = 'user'
-      else if s.toUpperCase() is s
-        tagTypes[tag] = 'state'
-      else
-        tagTypes[tag] = 'custom'
-      elems.push ['a', href: "/#{norm}", onclick: getToggler(tag), tag]
-    domly elems, body
-    if isAuth
-      domly ['div', $: 'container', ['a', $: 'button', href: '/.refresh', 'Refresh']], body
-
-  renderPlan = (typ, id, pf) ->
-    if id == '/'
-      title = "Planfile"
-    else
-      title = pf.title or pf.path
-    tags = ['div', $: 'tags']
-    pf.tags.reverse()
-    for tag in pf.tags
-      tags.push ['span', $: "tag-#{tagTypes[tag]}", tag]
-    ['section', $: 'entry', ['h1', title], ['div', id: "#{typ}-#{id}"], tags]
-
-  renderPlans = ->
-    elems = ['div', id: 'planfiles', $: 'container planfiles', style: 'display: none;']
-    for id, pf of repo.sections
-      elems.push renderPlan('overview', id, pf)
-    for id, pf of repo.planfiles
-      elems.push renderPlan('planfile', id, pf)
-    $planfiles = domly elems, body, true
-    for id, pf of repo.sections
-      doc.$("overview-#{id}").innerHTML = pf.rendered
-    for id, pf of repo.planfiles
-      doc.$("planfile-#{id}").innerHTML = pf.rendered
+  submitForm = ->
+    $form = doc.querySelector 'form'
+    if $form.action is '/.new'
+      $title = doc.querySelector 'form input[name=title]'
+      $id = doc.querySelector 'form input[name=id]'
+      $id.value = $title.value.replace(/[^a-zA-Z0-9]+/g, '-')
+    $xsrf = doc.querySelector 'form input[name=xsrf]'
+    $xsrf.value = xsrf
+    $form.submit()
 
   hide = (element) ->
     element.setAttribute 'style', 'display: none;'
@@ -141,14 +108,94 @@ define 'planfile', (exports, root) ->
         joined += string
     joined
 
-  [planfiles, tags, deps] = [[], [], false]
+  showEditor = () ->
+    $editor = doc.querySelector('.editor')
+    $title = doc.querySelector('.editor input[name=title]')
+    show $editor
+    $title.focus()
+
+  renderBar = ->
+    elems = ['div', $: 'container tag-menu']
+    tags = repo.tags.slice(0)
+    tags.reverse()
+    for tag in tags
+      norm = tag
+      s = tag[0]
+      if s is '#'
+        tagTypes[tag] = 'hashtag'
+        norm = tag.slice 1
+      else if s is '@'
+        tagTypes[tag] = 'user'
+      else if s.toUpperCase() is s
+        tagTypes[tag] = 'state'
+      else
+        tagTypes[tag] = 'custom'
+      elems.push ['a', href: "/#{norm}", onclick: getToggler(tag), tag]
+    domly elems, body
+    if isAuth
+      domly ['div', $: 'container editor-controls',
+          ['a', $: 'button', href: '/.refresh', 'Refresh'],
+          ['a', $: 'button edit', onclick: getUpdatedEditor(null, '/.new'), '+']
+      ], body
+
+  getUpdatedEditor = (id, action) ->
+    ->
+      $form = doc.querySelector('form')
+      $form.action = action
+      $title = doc.querySelector('input[name=title]')
+      $content = doc.querySelector('textarea')
+      $tags = doc.querySelector('input[name=tags]')
+      $id = doc.querySelector 'form input[name=id]'
+      if id
+        source = repo.planfiles[id] or repo.sections[id]
+        $id.value = id
+        $title.value = source.title
+        $content.value = source.content
+        $tags.value = source.tags.join(', ')
+        $editor = doc.querySelector('.editor')
+      else
+        $id.value = ''
+        $title.value = ''
+        $content.value = ''
+        $tags.value = ''
+      showEditor()
+
+  renderPlan = (typ, id, pf) ->
+    if id == '/'
+      title = "Planfile"
+      return ['section', $: 'entry', ['h1', title], ['div', id: "root"]]
+    else
+      title = pf.title or pf.path
+    tags = ['div', $: 'tags']
+    pf.tags.reverse()
+    for tag in pf.tags
+      tags.push ['span', $: "tag-#{tagTypes[tag]}", tag]
+    if isAuth
+      tags.push ['a', $: 'edit', onclick: getUpdatedEditor(id, '/.modify'), 'Edit']
+    ['section', $: 'entry', ['h1', title], ['div', id: "#{typ}-#{id}"], tags]
+
+  renderPlans = ->
+    elems = ['div', id: 'planfiles', $: 'container planfiles', style: 'display: none;']
+    for id, pf of repo.sections
+      elems.push renderPlan('overview', id, pf)
+    for id, pf of repo.planfiles
+      elems.push renderPlan('planfile', id, pf)
+    $planfiles = domly elems, body, true
+    for id, pf of repo.sections
+      if id is '/'
+        doc.$('root').innerHTML = pf.rendered
+      else
+        doc.$("overview-#{id}").innerHTML = pf.rendered
+    for id, pf of repo.planfiles
+      doc.$("planfile-#{id}").innerHTML = pf.rendered
 
   buildState = (tags) ->
     split = location.pathname.replace(':deps', '').split('/')
     pfl = []
+    sects = []
     if split[1] is '.item'
       pfl = [split[2]]
-      tags = []
+      tags = ['.item']
     else
       if !tags
         tags = location.pathname.replace(':deps', '').substr(1).split('/')
@@ -160,6 +207,9 @@ define 'planfile', (exports, root) ->
       for k, v of repo.planfiles
         if matchState(tags, v.tags)
           pfl.push k
+      for k, v of repo.sections
+        if matchState(tags, v.tags)
+          sects.push k
     # Build dependencies
     deps = endsWith(location.pathname, ':deps')
     if deps
@@ -168,7 +218,7 @@ define 'planfile', (exports, root) ->
         for dep in repo.planfiles[pf].depends
           pushUnique altPfl, dep
       pfl = altPfl
-    [pfl, tags]
+    [pfl, sects, tags]
 
   matchState = (stags, tags) ->
     count = 0
@@ -186,42 +236,59 @@ define 'planfile', (exports, root) ->
         rTags.push tag
     rTags
 
-  renderState = (planfiles, tags) ->
-    entries = doc.querySelectorAll('section.entry div[id|=planfile]')
-    root =  doc.querySelector('div[id*=overview-]')
+  toggle = (tags) ->
+    if tags is ['.item']
+      return
     tagLinks = doc.querySelectorAll('.tag-menu a')
-    # Render active tags
     for link in tagLinks
       link.className = ''
     for tag in tags
       for link in tagLinks
         if link.textContent is tag
           link.className = 'clicked'
-    # Check if any planfiles are specified
-    if planfiles.length isnt 0
-      hide root.parentNode
-      for entry in entries
+
+  renderState = (planfiles, sections, tags) ->
+    pfs = doc.querySelectorAll('section.entry div[id|=planfile]')
+    sects = doc.querySelectorAll('section.entry div[id|=overview]')
+    docroot =  doc.$ 'root'
+    toggle(tags)
+    # Render active tags
+    if tags.length isnt 0
+      hide docroot.parentNode
+    else
+      show docroot.parentNode
+    # Check if any planfiles or sections are specified
+    if tags.length isnt 0
+      for entry in pfs
         name = entry.id.substr(9)
         if name in planfiles
           show entry
         else
           hide entry
+      for entry in sects
+        name = entry.id.substr(9)
+        if name in sections
+          show entry
+        else
+          hide entry
     else
       if !deps
-        show root.parentNode
-        for entry in entries
+        for entry in pfs
+          show entry
+        for entry in sects
           show entry
       else
-        hide root.parentNode
         for entry in entries
+          hide entry
+        for entry in sects
           hide entry
 
   window.onpopstate = (e) ->
     if !e.state
-      [planfiles, tags] = buildState()
-      renderState(planfiles, tags)
+      [planfiles, sections, tags] = buildState()
+      renderState(planfiles, sections, tags)
     else
-      renderState(e.state.planfiles, e.state.tags)
+      renderState(e.state.planfiles, e.state.sections, e.state.tags)
 
   getToggler = (tag) ->
     ->
@@ -233,9 +300,35 @@ define 'planfile', (exports, root) ->
         pushUnique(tags, tag)
       else
         deleteElement(tags, tag)
-      [planfiles, tags] = buildState(tags)
-      history.pushState({planfiles: planfiles, tags: tags}, '', '/' + join(tagString(tags), '/'))
-      renderState(planfiles, tags)
+      [planfiles, sections, tags] = buildState(tags)
+      history.pushState({planfiles: planfiles, sections: sections, tags: tags}, '', '/' + join(tagString(tags), '/'))
+      renderState(planfiles, sections, tags)
+
+  closeEditor = ->
+    hide doc.querySelector '.editor'
+
+  initEdit = ->
+    if isAuth
+      elems =  ['div', $: 'container editor',
+        ['h2', 'Editor'],
+        ['form', action: '', method: "post", action: '/.new',
+          ['input', type: 'hidden', name: 'xsrf'],
+          ['input', type: 'hidden', name: 'id'],
+          ['input', type: 'text', name: 'title', placeholder: 'Title'],
+          ['textarea', name: 'content', placeholder: 'Content', ''],
+          ['input', type: 'text', name: 'tags', placeholder: 'Tags'],
+          ['div', $: 'controls',
+            ['a', onclick: showPreview, 'Render Preview'],
+            ['a', onclick: closeEditor, 'Cancel'],
+            ['input', type: 'submit', onclick: submitForm, value: 'Save'],
+          ]
+        ]
+      ]
+      domly elems, body
+      $editor = doc.querySelector '.editor'
+      $editor.setAttribute 'style', 'display: none;'
+      $content = doc.querySelector '.editor textarea'
+      $preview = domly ['div', id: 'preview'], $editor, true
 
   exports.run = ->
     initAnalytics()
@@ -246,11 +339,9 @@ define 'planfile', (exports, root) ->
     renderHeader()
     renderBar()
     renderPlans()
-    [planfiles, tags] = buildState()
-    renderState(planfiles, tags)
-    $content = domly ['textarea', ''], body, true
-    domly ['a', onclick: showPreview, 'Render Preview'], body
-    $preview = domly ['div', id: 'preview'], body, true
+    [planfiles, sections, tags] = buildState()
+    renderState(planfiles, sections, tags)
+    initEdit()
     $planfiles.style.display = 'block'
 
 planfile.run()

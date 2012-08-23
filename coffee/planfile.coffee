@@ -311,7 +311,7 @@ define 'planfile', (exports, root) ->
     if isAuth
       elems =  ['div', $: 'container editor',
         ['h2', 'Editor'],
-        ['form', action: '', method: "post", action: '/.new',
+        ['form', method: "post", action: '/.new',
           ['input', type: 'hidden', name: 'xsrf'],
           ['input', type: 'hidden', name: 'id'],
           ['input', type: 'text', name: 'title', placeholder: 'Title'],

@@ -280,6 +280,7 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 			case "id":
 				id = string(v)
 			case "tags":
+				status := false
 				for _, f := range bytes.Split(v, []byte{' '}) {
 					tag := strings.TrimRight(string(f), ",")
 					if len(tag) < 2 {
@@ -288,7 +289,9 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 					if tag[0] == '@' {
 						users = append(users, strings.ToLower(tag[1:]))
 					}
-					if strings.ToUpper(tag) != tag {
+					if strings.ToUpper(tag) == tag {
+						status = true
+					} else {
 						tag = strings.ToLower(tag)
 					}
 					if strings.HasPrefix(tag, "dep:") && len(tag) > 4 {
@@ -303,6 +306,9 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 							p.Tags = append(p.Tags, tag)
 						}
 					}
+				}
+				if !status {
+					p.Tags = append(p.Tags, "TODO")
 				}
 			case "title":
 				p.Title = string(v)

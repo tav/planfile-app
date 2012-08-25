@@ -300,9 +300,7 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 							p.Depends = append(p.Depends, tag)
 						}
 					} else {
-						if strings.HasSuffix(tag, ":overview") {
-							section = tag[:len(tag)-9]
-						} else if !contains(p.Tags, tag) {
+						if !contains(p.Tags, tag) {
 							p.Tags = append(p.Tags, tag)
 						}
 					}
@@ -310,6 +308,8 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 				if !status {
 					p.Tags = append(p.Tags, "TODO")
 				}
+			case "section":
+				section = string(v)
 			case "title":
 				p.Title = string(v)
 			}
@@ -788,13 +788,23 @@ func main() {
 		content := ctx.FormValue("content")
 		tags := ctx.FormValue("tags")
 		title := ctx.FormValue("title")
-		content = fmt.Sprintf(`---
+		if ctx.FormValue("section") == "on" {
+			content = fmt.Sprintf(`---
+id: %s
+section: %s
+title: %s
+---
+
+%s`, id, tags, title, content)			
+		} else {
+			content = fmt.Sprintf(`---
 id: %s
 tags: %s
 title: %s
 ---
 
 %s`, id, tags, title, content)
+		}
 		if title == "" {
 			title = id
 		}

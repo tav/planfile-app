@@ -45,14 +45,14 @@ define 'planfile', (exports, root) ->
     return
 
   renderForm = (action) ->
-    form = ['form', action: action, method: "post"]
+    form = ['form', action: action, method: 'post']
 
   renderHeader = ->
     if username
       header = ['div', $: 'container header',
-        ['a', href: "/.logout", $: 'button logout',
-          "Logout #{username}"
-          ['img', src: avatar],
+        ['a', href: '/.logout', $: 'button logout',
+          ['img', src: avatar]
+          "Logout",
         ],
       ]
     else
@@ -64,7 +64,7 @@ define 'planfile', (exports, root) ->
   showPreview = ->
     form = new FormData()
     form.append 'content', $content.value
-    ajax "/.preview", form, (xhr) ->
+    ajax '/.preview', form, (xhr) ->
       if xhr.status is 200
         $preview.innerHTML = xhr.responseText
 
@@ -146,6 +146,7 @@ define 'planfile', (exports, root) ->
       $content = doc.querySelector('textarea')
       $tags = doc.querySelector('input[name=tags]')
       $id = doc.querySelector 'form input[name=id]'
+      $section = doc.querySelector 'form input[name=section]'
       if id
         source = repo.planfiles[id] or repo.sections[id]
         $id.value = id
@@ -158,11 +159,13 @@ define 'planfile', (exports, root) ->
         $title.value = ''
         $content.value = ''
         $tags.value = ''
+        $tags.placeholder = 'Tags'
+        $section.checked = false
       showEditor()
 
   renderPlan = (typ, id, pf) ->
     if id == '/'
-      title = "Planfile"
+      title = 'Planfile'
       return ['section', $: 'entry', ['h1', title], ['div', id: "root"]]
     else
       title = pf.title or pf.path
@@ -208,7 +211,7 @@ define 'planfile', (exports, root) ->
         if matchState(tags, v.tags)
           pfl.push k
       for k, v of repo.sections
-        if matchState(tags, v.tags)
+        if tags[0] is k
           sects.push k
     # Build dependencies
     deps = endsWith(location.pathname, ':deps')
@@ -248,40 +251,38 @@ define 'planfile', (exports, root) ->
           link.className = 'clicked'
 
   renderState = (planfiles, sections, tags) ->
+    # Render active tags
     pfs = doc.querySelectorAll('section.entry div[id|=planfile]')
     sects = doc.querySelectorAll('section.entry div[id|=overview]')
     docroot =  doc.$ 'root'
     toggle(tags)
-    # Render active tags
-    if tags.length isnt 0
-      hide docroot.parentNode
-    else
-      show docroot.parentNode
     # Check if any planfiles or sections are specified
     if tags.length isnt 0
+      hide docroot.parentNode
       for entry in pfs
         name = entry.id.substr(9)
         if name in planfiles
-          show entry
+          show entry.parentNode
         else
-          hide entry
+          hide entry.parentNode
       for entry in sects
         name = entry.id.substr(9)
         if name in sections
-          show entry
+          show entry.parentNode
         else
-          hide entry
+          hide entry.parentNode
     else
+      show docroot.parentNode
+      for entry in sects
+        hide entry.parentNode
       if !deps
         for entry in pfs
-          show entry
-        for entry in sects
-          show entry
+          show entry.parentNode
       else
-        for entry in entries
-          hide entry
+        for entry in pfs
+          hide entry.parentNode
         for entry in sects
-          hide entry
+          hide entry.parentNode
 
   window.onpopstate = (e) ->
     if !e.state
@@ -307,6 +308,15 @@ define 'planfile', (exports, root) ->
   closeEditor = ->
     hide doc.querySelector '.editor'
 
+  swapTagMode = ->
+    ->
+      $tags = doc.querySelector 'input[name=tags]'
+      $section = doc.querySelector 'input[name=section]'
+      if $section.checked
+        $tags.placeholder = 'Overview for tag:'
+      else
+        $tags.placeholder = 'Tags'
+
   initEdit = ->
     if isAuth
       elems =  ['div', $: 'container editor',
@@ -317,6 +327,9 @@ define 'planfile', (exports, root) ->
           ['input', type: 'text', name: 'title', placeholder: 'Title'],
           ['textarea', name: 'content', placeholder: 'Content', ''],
           ['input', type: 'text', name: 'tags', placeholder: 'Tags'],
+          ['label'
+            ['input', type: 'checkbox', name: 'section', onclick: swapTagMode(), checked: ''],
+            'Section']
           ['div', $: 'controls',
             ['a', onclick: showPreview, 'Render Preview'],
             ['a', onclick: closeEditor, 'Cancel'],

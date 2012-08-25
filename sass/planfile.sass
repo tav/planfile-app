@@ -134,7 +134,7 @@ p
       background: #dedede
     img
       height: 25px
-      padding-left: 9px
+      padding-right: 9px
       width: 25px
       vertical-align: middle
 
@@ -168,7 +168,7 @@ p
   clear: both
   padding-top: 20px
   .controls
-    margin: 10px 0
+    margin: 15px 0
     a
       background: $lightgrey
       color: $grey
@@ -212,23 +212,19 @@ p
       color: white
       &:hover
         background: $lightgreen
-
+    &[type=checkbox]
+      float: left
+      vertical-align: middle
+      height: 21px
+      margin-right: 5px
+  label
+    cursor: pointer
   .button
     float: right
 
 textarea, 
 input
   outline: none
-
-// * showIndexLoggedIn
-
-.logo
-  text-transform: uppercase
-  background: black
-  color: white
-  float: left  
-  padding: 10px
-  border-radius: 3px
 
 .user_controls
   background: #E9E9E9

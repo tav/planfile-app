@@ -74,6 +74,10 @@ define 'planfile', (exports, root) ->
       $title = doc.querySelector 'form input[name=title]'
       $id = doc.querySelector 'form input[name=id]'
       $id.value = $title.value.replace(/[^a-zA-Z0-9]+/g, '-')
+    # Simple tag post-processing
+    $tags = doc.querySelector 'form input[name=tags]'
+    tags = $tags.value
+    $tags.value = (tag.trim() for tag in tags.split(',')).join(', ')
     $xsrf = doc.querySelector 'form input[name=xsrf]'
     $xsrf.value = xsrf
     $form.submit()
@@ -113,6 +117,7 @@ define 'planfile', (exports, root) ->
     $title = doc.querySelector('.editor input[name=title]')
     show $editor
     $title.focus()
+    window.scroll(0, doc.height)
 
   renderBar = ->
     elems = ['div', $: 'container tag-menu']
@@ -320,7 +325,6 @@ define 'planfile', (exports, root) ->
   initEdit = ->
     if isAuth
       elems =  ['div', $: 'container editor',
-        ['h2', 'Editor'],
         ['form', method: "post", action: '/.new',
           ['input', type: 'hidden', name: 'xsrf'],
           ['input', type: 'hidden', name: 'id'],

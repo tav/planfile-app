@@ -164,24 +164,28 @@ p
       background: $midgrey
 
 .editor
-  border-top: 1px solid grey
+  border: 1px solid #ECECEC
   clear: both
-  padding-top: 20px
+  padding: 20px
+  width: 918px
+  background: #F7F7F7
+  margin-bottom: 50px
   .controls
     margin: 15px 0
     a
-      background: $lightgrey
+      background: white
       color: $grey
       margin-right: 10px
       cursor: pointer
-      padding: 5px 10px 
+      padding: 4px 9px
+      border: 1px solid #E7E7E7
       border-radius: 3px
       &:hover
         color: #A3A3A3
   #preview
     margin: 20px 0
   textarea
-    width: 937px
+    width: 896px
     border: 1px solid #CCC
     border-top: 0
     height: 150px
@@ -191,8 +195,8 @@ p
     font-family: monospace
   input
     color: $grey
-    &[type=text]    
-      width: 937px
+    &[type=text]
+      width: 896px
       border: 1px solid #CCC
       padding: 15px 10px
       font-size: 13px
@@ -222,9 +226,10 @@ p
   .button
     float: right
 
-textarea, 
-input
+textarea,
+input[type=text]
   outline: none
+  box-shadow: inset 2px 2px 3px #F8F8F8
 
 .user_controls
   background: #E9E9E9
@@ -329,6 +334,7 @@ p.title
 .syntax
   font-size: 13px
   margin-bottom: 25px
+  border-left: 5px solid #EBEBEB
   pre
     line-height: 1.8em
   .c, .cm, .cp, .cs, .c1

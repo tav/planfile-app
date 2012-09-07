@@ -1,0 +1,8 @@
+oauth-id: GITHUB-OAUTH-ID
+oauth-secret: GITHUB-OAUTH-SECRET
+redirect-url: http://localhost:8888/.oauth
+repository: espians/planfile
+secure-mode: false
+cookie-key-file: cookie.key
+ga-host: GA-HOST
+ga-id: GA-ID

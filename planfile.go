@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,9 +34,11 @@ import (
 )
 
 var (
-	httpClient = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsconf.Config}}
-	runPath    string
-	tripleDash = []byte("---\n")
+	debug             bool
+	httpClient        = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsconf.Config}}
+	instanceDirectory string
+	logPath           string
+	tripleDash        = []byte("---\n")
 )
 
 var (
@@ -642,7 +645,7 @@ func main() {
 	title := opts.StringConfig("title", "Planfile",
 		"the title for the web app [Planfile]")
 
-	debug, instanceDirectory, _ := runtime.DefaultOpts("planfile", opts, os.Args)
+	debug, instanceDirectory, _, logPath = runtime.DefaultOpts("planfile", opts, os.Args)
 
 	service := &oauth.OAuthService{
 		ClientID:     *oauthID,
@@ -656,7 +659,6 @@ func main() {
 
 	assets := map[string]string{}
 	json.Unmarshal(readFile("assets.json"), &assets)
-	runPath = instanceDirectory
 	setupPygments()
 
 	mutex := sync.RWMutex{}
@@ -685,6 +687,7 @@ func main() {
 	register := func(path string, handler func(*Context), usegzip ...bool) {
 		gzippable := len(usegzip) > 0 && usegzip[0]
 		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			log.Info("serving %s", r.URL)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			if gzippable && httputil.Parse(r, "Accept-Encoding").Accepts("gzip") {
 				buf := &bytes.Buffer{}
@@ -709,7 +712,7 @@ func main() {
 <title>` + html.EscapeString(*title) + `</title>
 <link href="http://fonts.googleapis.com/css?family=Abel|Lato:300,400,700" rel=stylesheet>
 <link href=/.static/` + assets["planfile.css"] + ` rel=stylesheet>
-<body><script>DATA = ['` + *gaHost + `', '` + *gaID + `', `)
+<body><script>DATA = ['` + *gaHost + `', '` + *gaID + `', '` + html.EscapeString(*title) + `', `)
 
 	footer := []byte(`];</script>
 <script src=/.static/` + assets["planfile.js"] + `></script>
@@ -772,10 +775,12 @@ func main() {
 		err := repo.UpdateInfo()
 		if err != nil {
 			ctx.Error("Couldn't update repo info", err)
+			return
 		}
-		var id, message string
+		var id, path, message string
 		if update {
 			id = ctx.FormValue("id")
+			path = ctx.FormValue("path")
 		} else {
 			baseID := ctx.FormValue("id")
 			id = baseID
@@ -784,6 +789,7 @@ func main() {
 				count += 1
 				id = fmt.Sprintf("%s%d", baseID, count)
 			}
+			path = id + ".md"
 		}
 		content := ctx.FormValue("content")
 		tags := ctx.FormValue("tags")
@@ -795,7 +801,7 @@ section: %s
 title: %s
 ---
 
-%s`, id, tags, title, content)			
+%s`, id, tags, title, content)
 		} else {
 			content = fmt.Sprintf(`---
 id: %s
@@ -813,12 +819,12 @@ title: %s
 		} else {
 			message = "Added: " + title
 		}
-		err = repo.Modify(ctx, id+".md", content, message)
+		err = repo.Modify(ctx, path, content, message)
 		if err != nil {
 			if update {
-				ctx.Error("Couldn't update item", err)
+				ctx.Error("<a href='/.refresh'>Try refreshing.</a> Couldn't update item", err)
 			} else {
-				ctx.Error("Couldn't save new item", err)
+				ctx.Error("<a href='/.refresh'>Try refreshing.</a> Couldn't save new item", err)
 			}
 			return
 		}
@@ -910,8 +916,8 @@ title: %s
 	}
 
 	registerStatic := func(filepath, urlpath string) {
-		split := strings.Split(filepath, ".")
-		ctype, ok := mimetypes[split[len(split)-1]]
+		_, ext := rsplit(filepath, ".")
+		ctype, ok := mimetypes[ext]
 		if !ok {
 			ctype = "application/octet-stream"
 		}
@@ -923,6 +929,7 @@ title: %s
 		} else {
 			content := readFile(filepath)
 			register(urlpath, func(ctx *Context) {
+				ctx.SetHeader("Cache-Control", "public, max-age=86400")
 				ctx.SetHeader("Content-Type", ctype)
 				ctx.Write(content)
 			}, strings.HasPrefix(ctype, "text/"))
@@ -930,7 +937,16 @@ title: %s
 	}
 
 	for _, path := range assets {
-		registerStatic("static/"+path, "/.static/"+path)
+		registerStatic(filepath.Join(instanceDirectory, "static", path), "/.static/"+path)
+	}
+
+	wwwPath := filepath.Join(instanceDirectory, "www")
+	if files, err := ioutil.ReadDir(wwwPath); err == nil {
+		for _, file := range files {
+			if !file.IsDir() {
+				registerStatic(filepath.Join(wwwPath, file.Name()), "/"+file.Name())
+			}
+		}
 	}
 
 	log.Info("Listening on %s", *httpAddr)

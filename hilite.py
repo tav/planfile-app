@@ -4,25 +4,24 @@
 # See the Planfile App UNLICENSE file for details.
 
 from cgi import escape
+from datetime import datetime
+from os.path import join
 from struct import pack, unpack
-from sys import stdin, stdout
+from sys import argv, stdin, stdout
 from traceback import print_exc
 
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import get_lexer_by_name, TextLexer
 
-DEBUG = 0
-
+DEBUG = argv[2] == "true"
 if DEBUG:
-    f = open('error.log', 'wb')
+    f = open(join(argv[1], 'hilite.log'), 'a+b')
 
 while 1:
     try:
-        length = stdin.read(4)
-        lang = stdin.read(unpack('!I', length)[0])
-        length = stdin.read(4)
-        text = unicode(stdin.read(unpack('!I', length)[0]), 'utf-8')
+        lang = stdin.read(unpack('!I', stdin.read(4))[0])
+        text = unicode(stdin.read(unpack('!I', stdin.read(4))[0]), 'utf-8')
         try:
             lexer = get_lexer_by_name(lang)
         except ValueError:
@@ -35,6 +34,9 @@ while 1:
         stdout.flush()
     except Exception, err:
         if DEBUG:
+            f.write("---------------------------------\n")
+            f.write("ERROR: %s\n" % datetime.utcnow())
+            f.write("---------------------------------\n")
             print_exc(100, f)
-            f.flush()
+            f.close()
         break

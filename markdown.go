@@ -8,6 +8,7 @@ import (
 	"amp/runtime"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/russross/blackfriday"
 	"html"
 	"io"
@@ -201,9 +202,12 @@ func (h *Hilite) Run() {
 	r, stdout, _ := os.Pipe()
 	h.r = r
 	h.w = w
-	proc, err := os.StartProcess("hilite.py", []string{runPath + "/hilite.py"}, &os.ProcAttr{
-		Files: []*os.File{stdin, stdout, nil},
-	})
+	proc, err := os.StartProcess(
+		"hilite.py",
+		[]string{instanceDirectory + "/hilite.py", logPath, fmt.Sprint(debug)},
+		&os.ProcAttr{
+			Files: []*os.File{stdin, stdout, nil},
+		})
 	if err != nil {
 		runtime.StandardError(err)
 	}

@@ -248,6 +248,7 @@ func rsplit(s string, sep string) (string, string) {
 type Planfile struct {
 	Content  string   `json:"content"`
 	Depends  []string `json:"depends"`
+	Done     bool     `json:"done"`
 	Path     string   `json:"path"`
 	Rendered string   `json:"rendered"`
 	Tags     []string `json:"tags"`
@@ -292,8 +293,11 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 					if tag[0] == '@' {
 						users = append(users, strings.ToLower(tag[1:]))
 					}
-					if strings.ToUpper(tag) == tag {
+					if tagUpper := strings.ToUpper(tag); tagUpper == tag {
 						status = true
+						if tagUpper == "DONE" {
+							p.Done = true
+						}
 					} else {
 						tag = strings.ToLower(tag)
 					}
@@ -392,7 +396,7 @@ func (r *Repo) Load() error {
 				log.Error("reading tarball file %q: %s", hdr.Name, err)
 				continue
 			}
-			pf, id, section, userRefs, ok := NewPlanfile(filename, data)
+			pf, id, section, userRefs, ok := NewPlanfile(filename+".md", data)
 			if !ok {
 				continue
 			}
@@ -443,7 +447,8 @@ func (r *Repo) Load() error {
 	}
 	i := 0
 	tags := make([]string, len(tagMap))
-	for tag, _ := range tagMap {
+	for tag, tagList := range tagMap {
+		sort.StringSlice(tagList).Sort()
 		tags[i] = tag
 		i += 1
 	}
@@ -710,9 +715,10 @@ func main() {
 	header := []byte(`<!doctype html>
 <meta charset=utf-8>
 <title>` + html.EscapeString(*title) + `</title>
-<link href="http://fonts.googleapis.com/css?family=Abel|Lato:300,400,700" rel=stylesheet>
+<link href="//fonts.googleapis.com/css?family=Abel|Lato:300,400,700" rel=stylesheet>
 <link href=/.static/` + assets["planfile.css"] + ` rel=stylesheet>
-<body><script>DATA = ['` + *gaHost + `', '` + *gaID + `', '` + html.EscapeString(*title) + `', `)
+<body><script>DATA = ['` + *gaHost + `', '` + *gaID + `', '` + html.EscapeString(*title) + `', '/.static/` +
+		assets["swf/ZeroClipboard.swf"] + `', `)
 
 	footer := []byte(`];</script>
 <script src=/.static/` + assets["planfile.js"] + `></script>
@@ -783,6 +789,7 @@ func main() {
 			path = ctx.FormValue("path")
 		} else {
 			baseID := ctx.FormValue("id")
+			log.Info("BASE ID: %q", baseID)
 			id = baseID
 			count := 0
 			for repo.Exists(id + ".md") {
@@ -790,18 +797,21 @@ func main() {
 				id = fmt.Sprintf("%s%d", baseID, count)
 			}
 			path = id + ".md"
+			log.Info("PATH ID: %q", path)
 		}
-		content := ctx.FormValue("content")
+		content := strings.Replace(ctx.FormValue("content"), "\r\n", "\n", -1)
 		tags := ctx.FormValue("tags")
 		title := ctx.FormValue("title")
 		if ctx.FormValue("section") == "on" {
-			content = fmt.Sprintf(`---
+			if id != "/" {
+				content = fmt.Sprintf(`---
 id: %s
 section: %s
 title: %s
 ---
 
 %s`, id, tags, title, content)
+			}
 		} else {
 			content = fmt.Sprintf(`---
 id: %s
@@ -912,6 +922,7 @@ title: %s
 		"jpg":  "image/jpeg",
 		"js":   "text/javascript",
 		"png":  "image/png",
+		"swf":  "application/x-shockwave-flash",
 		"txt":  "text/plain",
 	}
 

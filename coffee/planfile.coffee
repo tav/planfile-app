@@ -204,6 +204,8 @@ define 'planfile', (exports, root) ->
           s = s.slice 1, l
         else
           hide $editor
+      else
+        hide $editor
       if l = s.length
         found = null
         if l is 1
@@ -238,6 +240,8 @@ define 'planfile', (exports, root) ->
           for id in found
             show $planfiles[id]
         return
+    else
+      hide $editor
     if $root
       show $root
     for _, planfile of $planfiles
@@ -339,6 +343,7 @@ define 'planfile', (exports, root) ->
       if path
         state = path.split '/'
         state.sort()
+    history.pushState state, siteTitle, '/' + state.join('/')
     renderHeader()
     $main = domly ['div.container'], (domly ['div.main'], body, true), true
     renderEditor()

@@ -196,15 +196,18 @@ define 'planfile', (exports, root) ->
         if setControls
           $dep.className = 'selected'
       if l = s.length
+        if s[0] is '.editor'
+          if ls['id']?
+            getUpdatedEditor(ls['id'], ls['path'], ls['title'], ls['content'], ls['tags'], ls['action'], ls['section'] is '1', true)()
+          else
+            getUpdatedEditor('', '', '', '', '', '/.new', false, true)()
+          s = s.slice 1, l
+        else
+          hide $editor
+      if l = s.length
         found = null
         if l is 1
           tag = s[0]
-          if tag is '.editor'
-            if ls['id']?
-              getUpdatedEditor(ls['id'], ls['path'], ls['title'], ls['content'], ls['tags'], ls['action'], ls['section'] is '1', true)()
-            else
-              getUpdatedEditor('', '', '', '', '', '/.new', false, true)()
-            return
           if tag.lastIndexOf('.item.', 0) is 0
             if plan = $planfiles[id = tag.slice 6]
               found = [id]
@@ -298,6 +301,8 @@ define 'planfile', (exports, root) ->
   getUpdatedEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
     (evt) ->
       if not viaPop
+        state.push '.editor'
+        state.sort()
         history.pushState state, siteTitle, '/.editor'
       $form.action = action
       $formContent.value = content

@@ -130,14 +130,14 @@ textarea, input[type=text]
       clear: left
       overflow: auto
       a
-        background: #F8F8F8
-        text-decoration: none
-        color: #999
+        background: #f8f8f8
         border-radius: 3px
-        padding: 4px 5px
-        font-size: 10px
+        color: #999
+        display: none
         float: left
-        cursor: pointer
+        font-size: 10px
+        padding: 4px 5px
+        text-decoration: none
       span
         border-radius: 3px
         float: right
@@ -145,6 +145,11 @@ textarea, input[type=text]
         margin-left: 10px
         padding: 4px 6px
         text-decoration: none
+
+    &:hover
+      .tags
+        a
+          display: inherit
 
 .sidebar
   float: right

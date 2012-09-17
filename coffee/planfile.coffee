@@ -144,9 +144,14 @@ define 'planfile', (exports, root) ->
 
   renderSidebar = ->
     $elems = domly ['div.sidebar'], $main, true
-    $elem = domly ['div', ["label.tag.tag-deps", for: 't0', unselectable: 'on', 'SHOW DEPS']], $elems, true
-    $dep = domly ['input', type: 'checkbox', checked: ('.deps' in state), id: 't0', value: '.deps', onchange: toggle], $elem, true
-    id = 1
+    if '.deps' in state
+      ext = '.selected'
+    else
+      ext = ''
+    append = (elem) ->
+      div = domly ['div'], $elems, true
+      domly elem, div, true
+    $dep = append ["a.#{ext}", href: '/.deps', unselectable: 'on', onclick: getToggler('.deps'), 'SHOW DEPS']
     for tag in repo.tags
       norm = tag
       s = tag[0]
@@ -162,15 +167,17 @@ define 'planfile', (exports, root) ->
         norm = ".tag.#{tag}"
       normTag[norm] = tag
       tagNorm[tag] = norm
-      $elem = domly ['div', ["label.tag.tag-#{tagTypes[tag]}", for: "t#{id}", unselectable: 'on', tag]], $elems, true
-      $controls[norm] = domly ['input', type: 'checkbox', checked: (norm in state), id: "t#{id}", value: norm, onchange: toggle], $elem, true
-      id++
+      if norm in state
+        ext = '.selected'
+      else
+        ext = ''
+      $controls[norm] = append ["a.#{ext}", href: "/#{norm}", unselectable: 'on', onclick: getToggler(norm), tag]
 
   renderState = (s, setControls) ->
     if setControls
       for _, control of $controls
-        control.checked = ''
-      $dep.checked = ''
+        control.className = ''
+      $dep.className = ''
     for _, section of $sections
       hide section
     for _, planfile of $planfiles
@@ -181,7 +188,7 @@ define 'planfile', (exports, root) ->
       if deps = (s[0] is '.deps')
         s = s.slice 1, l
         if setControls
-          $dep.checked = 'checked'
+          $dep.className = 'selected'
       if l = s.length
         found = null
         if l is 1
@@ -193,13 +200,13 @@ define 'planfile', (exports, root) ->
             if $sections[tag]
               show $sections[tag]
             if setControls
-              $controls[tag].checked = 'checked'
+              $controls[tag].className = 'selected'
             found = repo.tagmap[normTag[tag]]
         else
           tagmap = repo.tagmap
           for norm in s
             if setControls and (control = $controls[norm])
-              control.checked = 'checked'
+              control.className = 'selected'
             if items = tagmap[normTag[norm]]
               if found
                 found = intersect items, found
@@ -239,7 +246,6 @@ define 'planfile', (exports, root) ->
         $preview.innerHTML = xhr.responseText
 
   submitForm = ->
-    # Argonought JavaScript Library
     if not $formID.value
       $formID.value = $formTitle.value.toLowerCase().replace(/[^a-zA-Z0-9]+/g, '-')
     $formTags.value = (tag.trim() for tag in $formTags.value.split(',')).join(', ')
@@ -252,19 +258,20 @@ define 'planfile', (exports, root) ->
       else
         $formTags.placeholder = 'Tags'
 
-  toggle = ->
-    tag = @value
-    if tag in state
-      state.splice state.indexOf(tag), 1
-    else
-      state.push tag
-    if state.length
-      state.sort()
-      url = '/' + state.join '/'
-    else
-      url = '/'
-    history.pushState state, siteTitle, url
-    renderState state, false
+  getToggler = (tag) ->
+    (evt) ->
+      evt.preventDefault()
+      if tag in state
+        state.splice state.indexOf(tag), 1
+      else
+        state.push tag
+      if state.length
+        state.sort()
+        url = '/' + state.join '/'
+      else
+        url = '/'
+      history.pushState state, siteTitle, url
+      renderState state, true
 
   getUpdatedEditor = (id, path, title, content, tags, action, isSection) ->
     (evt) ->

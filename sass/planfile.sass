@@ -152,11 +152,24 @@ textarea, input[type=text]
   width: 220px
 
   div
-    margin-bottom: 20px
+    margin-bottom: 22px
     text-align: right
 
-  label
-    margin-right: 10px
+  a
+    background: #eee
+    border-radius: 5px
+    color: #000
+    font-family: $monospace
+    font-size: 14px
+    padding: 6px 10px 6px 10px
+    text-decoration: none !important
+
+    &:hover
+      background: #dfdfdf
+
+    &.selected
+      background: #696969
+      color: #fff
 
 .tag
   background: #696969

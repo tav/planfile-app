@@ -767,6 +767,20 @@ func main() {
 
 	notAuthorised := []byte("ERROR: Not Authorised!")
 
+	refresh := func(ctx *Context) {
+		err := repo.Load()
+		if err != nil {
+			log.Error("couldn't rebuild planfile info: %s", err)
+			ctx.Write([]byte("ERROR: " + err.Error()))
+			return
+		}
+		repoJSON, err = json.Marshal(repo)
+		if err != nil {
+			ctx.Error("Couldn't encode repo data during refresh", err)
+			return
+		}
+	}
+
 	saveItem := func(ctx *Context, update bool) {
 		mutex.Lock()
 		defer mutex.Unlock()
@@ -789,7 +803,6 @@ func main() {
 			path = ctx.FormValue("path")
 		} else {
 			baseID := ctx.FormValue("id")
-			log.Info("BASE ID: %q", baseID)
 			id = baseID
 			count := 0
 			for repo.Exists(id + ".md") {
@@ -797,7 +810,6 @@ func main() {
 				id = fmt.Sprintf("%s%d", baseID, count)
 			}
 			path = id + ".md"
-			log.Info("PATH ID: %q", path)
 		}
 		content := strings.Replace(ctx.FormValue("content"), "\r\n", "\n", -1)
 		tags := ctx.FormValue("tags")
@@ -829,6 +841,7 @@ title: %s
 		} else {
 			message = "Added: " + title
 		}
+		log.Info("SAVE PATH: %q", path)
 		err = repo.Modify(ctx, path, content, message)
 		if err != nil {
 			if update {
@@ -838,7 +851,8 @@ title: %s
 			}
 			return
 		}
-		ctx.Redirect("/.refresh")
+		refresh(ctx)
+		ctx.Redirect("/.saved")
 	}
 
 	register("/.modify", func(ctx *Context) {
@@ -881,7 +895,6 @@ title: %s
 		}
 		ctx.SetCookie("avatar", user.AvatarURL)
 		ctx.SetCookie("user", user.Login)
-		ctx.Redirect("/")
 	})
 
 	register("/.preview", func(ctx *Context) {
@@ -894,24 +907,23 @@ title: %s
 	}, true)
 
 	register("/.refresh", func(ctx *Context) {
-		mutex.Lock()
-		defer mutex.Unlock()
 		if !ctx.IsAuthorised(repo) {
 			ctx.Write(notAuthorised)
 			return
 		}
-		err := repo.Load()
-		if err != nil {
-			log.Error("couldn't rebuild planfile info: %s", err)
-			ctx.Write([]byte("ERROR: " + err.Error()))
-			return
-		}
-		repoJSON, err = json.Marshal(repo)
-		if err != nil {
-			ctx.Error("Couldn't encode repo data during refresh", err)
-			return
-		}
+		mutex.Lock()
+		defer mutex.Unlock()
+		refresh(ctx)
 		ctx.Redirect("/")
+	})
+
+	saved := []byte(`<!doctype html>
+<meta charset=utf-8>
+<title>` + html.EscapeString(*title) + `</title>
+<body><script>SAVED=1</script><script src=/.static/` + assets["planfile.js"] + `></script>`)
+
+	register("/.saved", func(ctx *Context) {
+		ctx.Write(saved)
 	})
 
 	mimetypes := map[string]string{

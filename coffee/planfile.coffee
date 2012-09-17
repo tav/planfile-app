@@ -3,11 +3,17 @@
 
 define 'planfile', (exports, root) ->
 
+  if SAVED?
+    delete root.localStorage['id']
+    root.location = '/'
+    return
+
   doc = root.document
   doc.$ = doc.getElementById
   body = doc.body
   domly = amp.domly
   loc = root.location
+  ls = root.localStorage
 
   normTag = {}
   state = []
@@ -123,7 +129,7 @@ define 'planfile', (exports, root) ->
       for tag in pf.tags
         tags.push ["span.tag.tag-#{tagTypes[tag]}", tag]
       if isAuth
-        tags.push ['a.edit', onclick: getUpdatedEditor(id, pf.path, pf.title, pf.content, getTags(pf), '/.modify'), 'Edit']
+        tags.push ['a.edit', href: '/.editor', onclick: getUpdatedEditor(id, pf.path, pf.title, pf.content, getTags(pf), '/.modify'), 'Edit']
       if pf.depends.length
         tags.push ['a.edit', href: "/.deps/.item.#{id}", 'Show Deps']
       entry = $planfiles[id] = domly ['div.entry', ['h3', mark, ['span.title', pf.title or pf.path]]], $entries, true
@@ -193,6 +199,12 @@ define 'planfile', (exports, root) ->
         found = null
         if l is 1
           tag = s[0]
+          if tag is '.editor'
+            if ls['id']?
+              getUpdatedEditor(ls['id'], ls['path'], ls['title'], ls['content'], ls['tags'], ls['action'], ls['section'] is '1', true)()
+            else
+              getUpdatedEditor('', '', '', '', '', '/.new', false, true)()
+            return
           if tag.lastIndexOf('.item.', 0) is 0
             if plan = $planfiles[id = tag.slice 6]
               found = [id]
@@ -250,6 +262,16 @@ define 'planfile', (exports, root) ->
       $formID.value = $formTitle.value.toLowerCase().replace(/[^a-zA-Z0-9]+/g, '-')
     $formTags.value = (tag.trim() for tag in $formTags.value.split(',')).join(', ')
     $formXSRF.value = xsrf
+    ls['content'] = $formContent.value
+    ls['id'] = $formID.value
+    ls['path'] = $formPath.value
+    ls['tags'] = $formTags.value
+    ls['title'] = $formTitle.value
+    ls['action'] = $form.action
+    if $formSection.checked
+      ls['section'] = '1'
+    else
+      ls['section'] = '0'
 
   swapTagMode = ->
     ->
@@ -273,8 +295,10 @@ define 'planfile', (exports, root) ->
       history.pushState state, siteTitle, url
       renderState state, true
 
-  getUpdatedEditor = (id, path, title, content, tags, action, isSection) ->
+  getUpdatedEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
     (evt) ->
+      if not viaPop
+        history.pushState state, siteTitle, '/.editor'
       $form.action = action
       $formContent.value = content
       $formID.value = id
@@ -294,7 +318,8 @@ define 'planfile', (exports, root) ->
       show $editor
       $formTitle.focus()
       root.scroll 0, 0
-      evt.preventDefault()
+      if evt
+        evt.preventDefault()
 
   exports.run = ->
     initAnalytics()
@@ -324,4 +349,5 @@ define 'planfile', (exports, root) ->
   root.onpopstate = (e) ->
     renderState(state = e.state, true) if e.state
 
-planfile.run()
+if not SAVED?
+  planfile.run()

@@ -13,56 +13,34 @@ $lightblue: #08B0FF
 $green: #00AD37
 $lightgreen: #03C942
 
+$monospace: Monaco, Consolas, "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Lucida Console", monospace
+
+// * Elements
+
 *
   padding: 0
   margin: 0
 
 body
+  background: #fff
   font-family: Lato, Helvetica, Arial, serif
-  font-size: 16px  
+  font-size: 16px
 
-ol,
-ul,
-li
-  list-style: none
-  color: $grey
+a
+  text-decoration: none
+  color: blue
 
-.center
-  text-align: center
-  font-weight: 300
+  &:hover
+    text-decoration: underline
 
-// * Layout
-
-.container
-  width: 960px
-  margin: 10px auto
-  clear: both
-  overflow: auto
-  background: white
-
-.columns
-  display: block
-  float: left
-  margin: 0 10px
-  &.one
-    width: 168px
-  &.two
-    width: 336px
-  &.three
-    width: 504px
-  &.four
-    width: 672px
-  &.five
-    width: 840px
-
-// * Site layout
-
-.header
-  padding: 10px 0 19px
-  background: white
-  border-bottom: 1px solid #EEE
-
-// * Typography
+code
+  background: #fefbf6
+  border: 1px solid #dbd0be
+  background: #f0f0f0
+  border: 1px solid #dadada
+  font-family: $monospace
+  font-size: 13px
+  padding: 2px 4px
 
 h1, h2, h3, h4, h5
   font-weight: 700
@@ -75,105 +53,184 @@ h2
   font-size: 28px
 
 h3
-  font-size: 25px
+  font-size: 21px
 
 h4
-  font-size: 20px
+  font-size: 16px
 
 h5
-  font-size: 15px
+  font-size: 14px
+
+img
+  border: none
+
+label
+  cursor: pointer
+  -khtml-user-select: none
+  -moz-user-select: none
+  -ms-user-select: none
+  -webkit-user-select: none
+  user-select: none
+
+li, ol, ul
+  list-style: none
+  color: $grey
 
 p
+  font-weight: 400
+  line-height: 24px
   margin-bottom: 20px
-  color: $grey
-  font-weight: 300
-  a
-    text-decoration: none
-    font-style: bold
-    color: $grey
-    font-weight: 700
 
-.content
+textarea, input[type=text]
+  font-size: 15px
+  font-family: $monospace
+  outline: none
+  box-shadow: inset 2px 2px 3px #F8F8F8
+
+// * Layout
+
+.container
   clear: both
-  h1
-    font-size: 25px
+  margin: 0px auto
+  width: 920px
 
-.hidden
-  display: none
+.header
+  background-image: -webkit-linear-gradient(270deg, #fafafa, #e8e8e8)
+  background-image: linear-gradient(0deg, #fafafa, #e8e8e8)
+  border-bottom: 1px solid #ccc
+  height: 57px
+  min-width: 960px
+  padding-top: 12px
+
+.logo
+  padding-top: 8px
+
+  a
+    color: #000
+    font-family: Abel
+    font-size: 33px
+    line-height: 33px
+    text-decoration: none !important
+
+.main
+  margin: 30px 0px 10px 0px
+  min-width: 960px
+
+.entries
+  margin-right: 20px
+  width: 680px
+
+  .entry
+    margin-bottom: 30px
+
+    .content
+      margin-left: 23px
+
+    .tags
+      clear: left
+      overflow: auto
+      a
+        background: #F8F8F8
+        text-decoration: none
+        color: #999
+        border-radius: 3px
+        padding: 4px 5px
+        font-size: 10px
+        float: left
+        cursor: pointer
+      span
+        border-radius: 3px
+        float: right
+        font-size: 10px
+        margin-left: 10px
+        padding: 4px 6px
+        text-decoration: none
+
+.sidebar
+  float: right
+  padding: 0px 10px
+  width: 220px
+
+  div
+    margin-bottom: 20px
+    text-align: right
+
+  label
+    margin-right: 10px
+
+.tag
+  background: #696969
+  border-radius: 5px
+  color: #fff
+  font-family: $monospace
+  font-size: 14px
+  padding: 6px 10px 6px 10px
+
+.tag-hashtag
+  background: #eee
+  color: #000
+
+.tag-state-done
+  background: darkGreen
+
+.tag-state-needsreview
+  background: #ffe2ff
+  color: #000
+
+.tag-state-todo
+  background: darkRed
+
+.tag-state-wip
+  background: #b1f2ec
+  color: #000
+
+.tag-user
+  background: #3056bf
+
+.title
+  padding-left: 5px
 
 // * Controls
 
 .button
-  font-weight: 700
   border-radius: 5px
-  color: #333
+  color: #000
+  float: right
+  margin-left: 5px
+  margin-top: 5px
+  padding: 8px 11px 10px 11px
+  text-decoration: none !important
   &.edit
     background: $green
+    color: #fff
+    margin-right: 10px
     &:hover
       background: $lightgreen
-  &.action
-    background: #E9E9E9
-    color: #222
-    padding: 14px 20px
-    border: 1px solid #DFDFDF
-  &.login, &.logout
-    color: white
-    text-decoration: none
-    padding: 10px 11px 13px
+  &.login
     background: $blue
-    margin: 20px 0
-    line-height: 39px
-    border-radius: 5px
-    font-weight: 400
+    color: #fff
     &:hover
-      background: #02A7F5
+      background: #02a7f5
   &.logout
-    background: #f0f0f0
-    color: #000
-    &:hover
-      background: #dedede
+    margin-top: 4px
     img
       height: 25px
-      padding-right: 9px
+      padding-left: 9px
       width: 25px
       vertical-align: middle
 
-.sidebar
-  background: black
-  a
-    color: white
-    text-decoration: none
-    padding: 10px
-    display: block
-    &.red
-      background: red
-      &:hover
-        background: $lightred
-
-.editor-controls
-  text-align: right
-  a
-    background: $grey
-    color: white
-    padding: 3px 8px
-    display: inline-block
-    text-decoration: none
-    margin-left: 5px
-    cursor: pointer    
-    &:hover
-      background: $midgrey
-
 .editor
-  border: 1px solid #ECECEC
+  border: 1px solid #ececec
   clear: both
   padding: 20px
   width: 918px
   background: #F7F7F7
   margin-bottom: 50px
   .controls
+    float: right
     margin: 15px 0
     a
-      background: white
+      background: #fff
       color: $grey
       margin-right: 10px
       cursor: pointer
@@ -182,24 +239,21 @@ p
       border-radius: 3px
       &:hover
         color: #A3A3A3
-  #preview
+  .preview
     margin: 20px 0
   textarea
     width: 896px
     border: 1px solid #CCC
     border-top: 0
-    height: 150px
+    height: 300px
     padding: 10px
     color: $grey
-    font-size: 15px
-    font-family: monospace
   input
     color: $grey
     &[type=text]
       width: 896px
       border: 1px solid #CCC
       padding: 15px 10px
-      font-size: 13px
       &[name=title]
         border-radius: 3px 3px 0 0
       &[name=tags]
@@ -221,118 +275,14 @@ p
       vertical-align: middle
       height: 21px
       margin-right: 5px
-  label
-    cursor: pointer
   .button
     float: right
-
-textarea,
-input[type=text]
-  outline: none
-  box-shadow: inset 2px 2px 3px #F8F8F8
-
-.user_controls
-  background: #E9E9E9
-  color: #5F5F5F
-  float: right
-  padding: 7px 15px 7px 7px
-  border-radius: 3px
-  cursor: pointer
-  a
-    img
-      vertical-align: middle
-      margin-right: 10px
-      height: 25px
-      width: 25px
-  div  
-    display: none
-    text-decoration: none
-    border-left: 1px solid black
-    padding: 3px 10px
-    background: black
-    color: white
-    font-size: 12px
-    border-radius: 3px
-    margin-left: 5px    
-    a
-      color: inherit
-      text-decoration: none
-  &:hover div
-    display: inline-block
-
-p.title
-  font-size: 16px
-  font-weight: bold
-  padding: 10px
-  background: white
-  margin: 0
-
-.tag-menu
-  padding: 10px 0
-  width: 960px  
-  a
-    color: #B1B1B1
-    text-decoration: none
-    background: #F8F8F8
-    padding: 4px 9px
-    border-radius: 13px
-    font-weight: bold
-    font-size: 12px
-    margin-left: 10px
-    float: right
-    display: inline-block
-    &.clicked
-      background: #A1A1A1
-      color: white
-
-.planfiles
-  .entry  
-    margin-bottom: 30px  
-    .tags
-      clear: both
-      overflow: auto
-      a
-        background: #F8F8F8
-        text-decoration: none
-        color: #999
-        border-radius: 3px
-        padding: 4px 5px
-        font-size: 10px
-        float: left
-        cursor: pointer  
-      span
-        color: #818181
-        text-decoration: none
-        padding: 4px 6px
-        background: #EEE
-        margin-left: 10px
-        border-radius: 3px
-        font-size: 10px
-        float: right
-      .tag-user
-        background: $red
-        color: white
-      .tag-hashtag
-        background: $lightblue
-        color: white
-  ul
-    li
-      padding: 10px
-      border-top: 1px solid #F3F3F3
-      a
-        font-weight: bold
-        color: #444
-        text-decoration: none
-        &:hover
-          color: $blue
-      small
-        margin-left: 20px
-        color: $grey
 
 // * Source code syntax highlighting
 
 .syntax
   font-size: 13px
+  margin-left: 30px
   margin-bottom: 25px
   border-left: 5px solid #EBEBEB
   pre
@@ -366,21 +316,16 @@ p.title
   .gu
     color: #101010
   .k
-    color: #c32528
     color: #ff5600
   .kc
     color: #ff5600
   .kd
-    color: #ff5600
     color: #ff5600
   .kn, .kp, .kr, .kt
     color: #ff5600
   .l, .ld
     color: #101010
   .m
-    color: #3677a9
-    color: #00a33f
-    color: #1550a2
     color: #5d90cd
   .mf, .mh, .mi, .il, .mo
     color: #5d90cd
@@ -391,8 +336,6 @@ p.title
   .na
     color: #bbbbbb
   .nb
-    color: #bf78cc
-    color: #af956f
     color: #a535ae
   .nc
     color: #101010
@@ -401,12 +344,10 @@ p.title
   .ne
     color: #af956f
   .nf
-    color: #3677a9
     color: #1550a2
   .ni, .nl
     color: #101010
   .nn
-    color: #101010
     color: #101010
   .no, .nx
     color: #101010
@@ -415,15 +356,10 @@ p.title
   .nv, .vc, .vg, .vi, .py
     color: #101010
   .o
-    color: #ff5600
     color: #101010
   .ow, .p
     color: #101010
   .s
-    color: #dd1144
-    color: #c32528
-    color: #39946a
-    color: #5d90cd
     color: #00a33f
   .sb, .sc
     color: #00a33f

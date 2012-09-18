@@ -43,11 +43,64 @@ define 'planfile', (exports, root) ->
     for id in planfiles[id].depends
       getDeps(id, planfiles, collect)
 
+  getState = ->
+    if path = loc.pathname.substr 1, loc.pathname.length
+      if path.charAt(path.length - 1) is '/'
+        path = path.substr 0, path.length - 1
+      if path
+        s = path.split '/'
+        s.sort()
+        return s
+    return []
+
   getTags = (pf) ->
     res = (tag for tag in pf.tags)
     for tag in pf.depends
       res.push "dep:#{tag}"
     res.join ', '
+
+  getToggler = (tag) ->
+    (evt) ->
+      evt.preventDefault()
+      if tag in state
+        state.splice state.indexOf(tag), 1
+      else
+        state.push tag
+      if state.length
+        state.sort()
+        url = '/' + state.join '/'
+      else
+        url = '/'
+      history.pushState state, siteTitle, url
+      renderState state, true
+
+  getUpdatedEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
+    (evt) ->
+      if not viaPop
+        state.push '.editor'
+        state.sort()
+        history.pushState state, siteTitle, '/.editor'
+      $form.action = action
+      $formContent.value = content
+      $formID.value = id
+      $formPath.value = path
+      $formTags.value = tags
+      $formTitle.value = title
+      if isSection
+        $formSection.checked = true
+        $formTags.placeholder = 'Overview for Tag:'
+        if id is '/'
+          $formTitle.value = 'README'
+          $formTags.value = 'README'
+      else
+        $formSection.checked = false
+        $formTags.placeholder = 'Tags'
+      $preview.innerHTML = ''
+      show $editor
+      $formTitle.focus()
+      root.scroll 0, 0
+      if evt
+        evt.preventDefault()
 
   hide = (element) ->
     element.style.display = 'none'
@@ -98,41 +151,44 @@ define 'planfile', (exports, root) ->
     $formTitle = append ['input', type: 'text', name: 'title', placeholder: 'Title']
     $formContent = append ['textarea', name: 'content', placeholder: 'Content', '']
     $formTags = append ['input', type: 'text', name: 'tags', placeholder: 'Tags']
-    $formSection = append ['input', type: 'checkbox', id: 'f0', name: 'section', onclick: swapTagMode(), checked: '']
     append ['div.controls',
             ['a', onclick: showPreview, 'Render Preview'],
             ['a', onclick: (-> hide($editor)), 'Cancel'],
             ['input', type: 'submit', onclick: submitForm, value: 'Save'],
           ]
-    append ['label', for: 'f0', ' Section']
+    padtop = append ['div.padtop']
+    $formSection = domly ['input', type: 'checkbox', id: 'f0', name: 'section', onclick: swapTagMode(), checked: ''], padtop, true
+    domly ['label', for: 'f0', ' Section'], padtop
+    domly ['div.clear'], $editor
     $preview = domly ['div.preview'], $editor, true
     hide $editor
+    hide $preview
 
   renderEntries = ->
     $entries = domly ['div.entries'], $main, true
     for id, pf of repo.sections
       if id is '/'
         entry = $root = domly ['div.entry'], $entries, true
-        $root.innerHTML = pf.rendered
+        setInnerHTML entry, pf.rendered, 'content'
       else
-        entry = $sections[tagNorm[id]] = domly ['div.entry', ['h2', pf.title or pf.path]], $entries, true
-        setInnerHTML entry, pf.rendered
+        entry = $sections[tagNorm[id]] = domly ['div.entry'], $entries, true
+        setInnerHTML entry, pf.rendered, 'content'
       if isAuth
-        domly ['div.tags', ['a.edit', onclick: getUpdatedEditor(id, pf.path, pf.title, pf.content, '', '/.modify', true), 'Edit']], entry
+        domly ['div.tags', ['a.edit', href: '/.editor', onclick: getUpdatedEditor(id, pf.path, pf.title, pf.content, '', '/.modify', true), 'Edit']], entry
     for id, pf of repo.planfiles
-      if pf.done
-        mark = '✓ '
-      else
-        mark = '✗ '
       tags = ['div.tags']
-      pf.tags.reverse()
-      for tag in pf.tags
-        tags.push ["span.tag.tag-#{tagTypes[tag]}", tag]
+      tags.push ['a.perma', href: "/.item.#{id}", '#']
+      ptags = pf.tags.slice(0)
+      ptags.reverse()
+      for tag in ptags
+        if tag.toUpperCase() isnt tag
+          tags.push ["span.tag.tag-#{tagTypes[tag]}", tag]
       if isAuth
         tags.push ['a.edit', href: '/.editor', onclick: getUpdatedEditor(id, pf.path, pf.title, pf.content, getTags(pf), '/.modify'), 'Edit']
-      if pf.depends.length
-        tags.push ['a.edit', href: "/.deps/.item.#{id}", 'Show Deps']
-      entry = $planfiles[id] = domly ['div.entry', ['h3', mark, ['span.title', pf.title or pf.path]]], $entries, true
+      tags.push ['a.edit', href: "/.deps/.item.#{id}", 'Show Deps']
+      entry = $planfiles[id] = domly [
+        'div.entry', ['div.status-wrap', ["span.status.status-#{pf.status.toLowerCase()}", pf.status]], ['div.title', pf.title or pf.path]
+        ], $entries, true
       setInnerHTML entry, pf.rendered, 'content'
       domly ['div', tags], entry
 
@@ -141,7 +197,7 @@ define 'planfile', (exports, root) ->
     if username
       header.push ['a.button.logout', href: "/.logout", "Logout #{username}", ['img', src: avatar]]
       if isAuth
-        header.push ['a.button', href: '/.refresh', 'Refresh!']
+        # header.push ['a.button', href: '/.refresh', 'Refresh!']
         header.push ['a.button.edit', href: '/.create', onclick: getUpdatedEditor('', '', '', '', [], '/.new'), '+ New Entry']
     else
       header.push ['a.button.login', href: '/.login', 'Login with GitHub']
@@ -260,6 +316,8 @@ define 'planfile', (exports, root) ->
   showPreview = ->
     form = new FormData()
     form.append 'content', $formContent.value
+    show $preview
+    $preview.innerHTML = 'loading preview ...'
     ajax '/.preview', form, (xhr) ->
       if xhr.status is 200
         $preview.innerHTML = xhr.responseText
@@ -287,49 +345,6 @@ define 'planfile', (exports, root) ->
       else
         $formTags.placeholder = 'Tags'
 
-  getToggler = (tag) ->
-    (evt) ->
-      evt.preventDefault()
-      if tag in state
-        state.splice state.indexOf(tag), 1
-      else
-        state.push tag
-      if state.length
-        state.sort()
-        url = '/' + state.join '/'
-      else
-        url = '/'
-      history.pushState state, siteTitle, url
-      renderState state, true
-
-  getUpdatedEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
-    (evt) ->
-      if not viaPop
-        state.push '.editor'
-        state.sort()
-        history.pushState state, siteTitle, '/.editor'
-      $form.action = action
-      $formContent.value = content
-      $formID.value = id
-      $formPath.value = path
-      $formTags.value = tags
-      $formTitle.value = title
-      if isSection
-        $formSection.checked = true
-        $formTags.placeholder = 'Overview for Tag:'
-        if id is '/'
-          $formTitle.value = 'README'
-          $formTags.value = 'README'
-      else
-        $formSection.checked = false
-        $formTags.placeholder = 'Tags'
-      $preview.innerHTML = ''
-      show $editor
-      $formTitle.focus()
-      root.scroll 0, 0
-      if evt
-        evt.preventDefault()
-
   exports.run = ->
     initAnalytics()
     for prop in ['addEventListener', 'FormData', 'XMLHttpRequest']
@@ -337,15 +352,9 @@ define 'planfile', (exports, root) ->
         alert "Sorry, this app only works on newer browsers with HTML5 features :("
         return
     hide body
-    if path = loc.pathname.substr 1, loc.pathname.length
-      if path.charAt(path.length - 1) is '/'
-        path = path.substr 0, path.length - 1
-      if path
-        state = path.split '/'
-        state.sort()
-    history.pushState state, siteTitle, '/' + state.join('/')
+    state = getState()
     renderHeader()
-    $main = domly ['div.container'], (domly ['div.main'], body, true), true
+    $main = domly ['div.container'], (domly ['div.container-ext'], (domly ['div.main'], body, true), true), true
     renderEditor()
     renderSidebar()
     renderEntries()
@@ -357,7 +366,12 @@ define 'planfile', (exports, root) ->
     show body
 
   root.onpopstate = (e) ->
-    renderState(state = e.state, true) if e.state
+    if e.state
+      renderState(state = e.state, true)
+    else
+      s = getState()
+      if s.join('/') isnt state.join('/')
+        renderState(state = s, true)
 
 if not SAVED?
   planfile.run()

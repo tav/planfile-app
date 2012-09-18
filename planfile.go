@@ -251,6 +251,7 @@ type Planfile struct {
 	Done     bool     `json:"done"`
 	Path     string   `json:"path"`
 	Rendered string   `json:"rendered"`
+	Status   string   `json:"status"`
 	Tags     []string `json:"tags"`
 	Title    string   `json:"title"`
 }
@@ -284,7 +285,6 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 			case "id":
 				id = string(v)
 			case "tags":
-				status := false
 				for _, f := range bytes.Split(v, []byte{' '}) {
 					tag := strings.TrimRight(string(f), ",")
 					if len(tag) < 2 {
@@ -294,7 +294,7 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 						users = append(users, strings.ToLower(tag[1:]))
 					}
 					if tagUpper := strings.ToUpper(tag); tagUpper == tag {
-						status = true
+						p.Status = tag
 						if tagUpper == "DONE" {
 							p.Done = true
 						}
@@ -312,9 +312,6 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 						}
 					}
 				}
-				if !status {
-					p.Tags = append(p.Tags, "TODO")
-				}
 			case "section":
 				section = string(v)
 			case "title":
@@ -329,6 +326,10 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 		log.Error("couldn't render %s: %s", path, err)
 		return
 	}
+	if section == "" && p.Status == "" {
+		p.Status = "TODO"
+		p.Tags = append(p.Tags, "TODO")
+	}
 	ok = true
 	p.Rendered = string(rendered)
 	return
@@ -342,6 +343,7 @@ type Repo struct {
 	Path      string               `json:"path"`
 	TagMap    map[string][]string  `json:"tagmap"`
 	Tags      []string             `json:"tags"`
+	Updated   time.Time            `json:"updated"`
 	info      *RepoInfo
 }
 
@@ -674,6 +676,7 @@ func main() {
 		runtime.Exit(1)
 	}
 
+	repo.Updated = time.Now().UTC()
 	repoJSON, err := json.Marshal(repo)
 	if err != nil {
 		runtime.StandardError(err)
@@ -715,7 +718,7 @@ func main() {
 	header := []byte(`<!doctype html>
 <meta charset=utf-8>
 <title>` + html.EscapeString(*title) + `</title>
-<link href="//fonts.googleapis.com/css?family=Abel|Lato:300,400,700" rel=stylesheet>
+<link href="//fonts.googleapis.com/css?family=Abel|Coustard:400" rel=stylesheet>
 <link href=/.static/` + assets["planfile.css"] + ` rel=stylesheet>
 <body><script>DATA = ['` + *gaHost + `', '` + *gaID + `', '` + html.EscapeString(*title) + `', '/.static/` +
 		assets["swf/ZeroClipboard.swf"] + `', `)
@@ -743,6 +746,19 @@ func main() {
 			ctx.Write(anon)
 		}
 		ctx.Write(footer)
+	}, true)
+
+	register("/.api", func(ctx *Context) {
+		mutex.RLock()
+		defer mutex.RUnlock()
+		if cb := ctx.FormValue("callback"); cb != "" {
+			ctx.Write([]byte(cb))
+			ctx.Write([]byte{'('})
+			ctx.Write(repoJSON)
+			ctx.Write([]byte{')', ';'})
+		} else {
+			ctx.Write(repoJSON)
+		}
 	}, true)
 
 	register("/.login", func(ctx *Context) {
@@ -774,6 +790,7 @@ func main() {
 			ctx.Write([]byte("ERROR: " + err.Error()))
 			return
 		}
+		repo.Updated = time.Now().UTC()
 		repoJSON, err = json.Marshal(repo)
 		if err != nil {
 			ctx.Error("Couldn't encode repo data during refresh", err)
@@ -895,6 +912,7 @@ title: %s
 		}
 		ctx.SetCookie("avatar", user.AvatarURL)
 		ctx.SetCookie("user", user.Login)
+		ctx.Redirect("/")
 	})
 
 	register("/.preview", func(ctx *Context) {

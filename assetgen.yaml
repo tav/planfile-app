@@ -12,10 +12,6 @@ generate:
       - %(AMPIFY_ROOT)s/src/coffee/domly.coffee
       - coffee/planfile.coffee
 
-- gfx/*:
-    source: gfx/*
-    type: binary
-
 - planfile.css:
     source: 
       - raw: |
@@ -26,10 +22,6 @@ generate:
 output.directory: static
 output.hashed: true
 output.manifest: assets.json
-
-css.embed.path.root: gfx
-css.embed.only: yes
-css.embed.url.base: /static/
 
 profile.dev:
   css.compressed: false

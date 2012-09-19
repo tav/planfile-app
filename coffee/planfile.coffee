@@ -15,7 +15,7 @@ define 'planfile', (exports, root) ->
   loc = root.location
   ls = root.localStorage
 
-  $selectDiv = $selectInput = $selectType = null
+  $selectDiv = $selectInput = $selectType = $selectWrap = null
   $selectResults = []
 
   selectCb = []
@@ -211,6 +211,7 @@ define 'planfile', (exports, root) ->
       if (value = $selectInput.value) is selectPrev
         return
       selectPrev = value
+      hide $selectWrap
       if value
         i = 0
         l = value.length
@@ -244,10 +245,9 @@ define 'planfile', (exports, root) ->
         while j < selectCount
           hide $selectResults[j]
           j++
+        show $selectWrap
       else
         selectResults = []
-        for i in [0...selectCount]
-          hide $selectResults[i]
 
   hide = (element) ->
     element.style.display = 'none'
@@ -259,6 +259,7 @@ define 'planfile', (exports, root) ->
 
   hideSelect = ->
     hide $selectDiv
+    hide $selectWrap
     selectOn = false
     doc.onkeydown = null
     doc.onkeyup = handleKeys
@@ -302,11 +303,14 @@ define 'planfile', (exports, root) ->
     $selectDiv = domly ['div.select'], $main, true
     $selectType = domly ['div.type'], $selectDiv, true
     $selectInput = domly ['input', type: 'text'], $selectDiv, true
-    results = domly ['div.results'], $selectDiv, true
+    $selectWrap = domly ['div.results'], $selectDiv, true
+    $selectWrap.onmouseover = selectOver
+    $selectWrap.onmouseout = selectOut
     for i in [0...selectCount]
-      item = domly ['div.item', 'hi'], results, true
+      item = domly ['div.item', 'hi'], $selectWrap, true
       hide item
       $selectResults.push item
+    hide $selectWrap
     hide $selectDiv
     $editor = domly ['div.editor'], $main, true
     $form = domly ['form', method: 'post', action: '/.new'], $editor, true
@@ -481,6 +485,19 @@ define 'planfile', (exports, root) ->
       show $root
     for _, planfile of $planfiles
       show planfile
+
+  selectOut = ->
+    i = 0
+    for elem in $selectResults
+      if i is selectIdx
+        elem.className = 'item selected'
+      else
+        elem.className = 'item'
+      i++
+
+  selectOver = ->
+    for elem in $selectResults
+      elem.className = 'item'
 
   setHistory = ->
     if state.length

@@ -23,7 +23,6 @@ $monospace: Monaco, Consolas, "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "L
 
 body
   background: #fff
-  font-family: Lato, Helvetica, Arial, serif
   font-family: Verdana, Arial, sans-serif
   font-size: 13px
 
@@ -108,9 +107,12 @@ textarea, input[type=text]
   width: 960px
 
 .header
-  background-image: -webkit-linear-gradient(270deg, #fafafa, #e8e8e8)
-  background-image: -moz-linear-gradient(270deg, #fafafa, #e8e8e8)
-  background-image: linear-gradient(0deg, #fafafa, #e8e8e8)
+  background: #e8e8e8
+  background-image: -webkit-linear-gradient(top, #fafafa, #e8e8e8)
+  background-image: -moz-linear-gradient(top, #fafafa, #e8e8e8)
+  background-image: -o-linear-gradient(top, #fafafa, #e8e8e8)
+  background-image: -ms-linear-gradient(top, #fafafa, #e8e8e8)
+  background-image: linear-gradient(top, #fafafa, #e8e8e8)
   border-bottom: 1px solid #ccc
   height: 57px
   min-width: 960px
@@ -142,30 +144,30 @@ textarea, input[type=text]
 
     .tags
       clear: left
+      font-size: 12px
       margin-left: 140px
       overflow: auto
       a.edit
-        background: #f8f8f8
+        background: #dfdfdf
         border-radius: 3px
-        color: #999
+        color: #000
         display: none
         float: left
         font-size: 10px
         margin-right: 10px
-        padding: 4px 5px
+        padding: 4px 6px
         text-decoration: none
         &:hover
-          background: #686868
+          background: #696969
           color: #fff
       a.perma
         color: #000
         float: right
-        margin-left: 4px
-        margin-top: 2px
+        margin-left: 3px
+        margin-top: 4px
       span
         border-radius: 3px
         float: right
-        font-size: 10px
         margin-left: 5px
         padding: 4px 6px
         text-decoration: none
@@ -269,18 +271,16 @@ textarea, input[type=text]
 
 .tag
   background: #696969
-  border-radius: 5px
   color: #fff
   font-family: $monospace
-  font-size: 14px
-  padding: 6px 10px 6px 10px
 
 .tag-hashtag
-  background: #eee
-  color: #000
+  background: #e7e7e7
+  color: #383838
 
 .tag-user
-  background: #3056bf
+  background: #505050
+  color: #fff
 
 .title
   font-family: Coustard
@@ -397,30 +397,45 @@ textarea, input[type=text]
     -ms-user-select: none
     -webkit-user-select: none
     user-select: none
-    width: 520px
+    width: 518px
 
     .item
       padding: 10px
 
       &:hover
-        background: #f8f8ff
+        background-image: -webkit-gradient(linear, 0% 0%, 0% 100%, color-stop(20%, #3875d7), color-stop(90%, #2a62bc))
+        background-image: -webkit-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+        background-image: -moz-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+        background-image: -o-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+        background-image: -ms-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+        background-image: linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+        color: #fff
 
     .selected
-      background: #f8f8ff
+      background-image: -webkit-gradient(linear, 0% 0%, 0% 100%, color-stop(20%, #3875d7), color-stop(90%, #2a62bc))
+      background-image: -webkit-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+      background-image: -moz-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+      background-image: -o-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+      background-image: -ms-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+      background-image: linear-gradient(top, #3875d7 20%, #2a62bc 90%)
+      color: #fff
 
   .type
     float: left
     font-family: Coustard
     font-size: 16px
     font-weight: 400
-    padding-top: 8px
+    padding-top: 10px
     text-align: right
-    width: 130px
+    width: 128px
 
   input
-    margin-left: 10px
-    padding: 8px 5px
-    width: 508px
+    border: 1px solid #505050
+    font-family: Verdana, Arial, sans-serif
+    font-size: 13px
+    margin-left: 12px
+    padding: 10px 9px
+    width: 500px
 
 // * Source code syntax highlighting
 

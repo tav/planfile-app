@@ -248,7 +248,6 @@ func rsplit(s string, sep string) (string, string) {
 type Planfile struct {
 	Content  string   `json:"content"`
 	Depends  []string `json:"depends"`
-	Done     bool     `json:"done"`
 	Path     string   `json:"path"`
 	Rendered string   `json:"rendered"`
 	Status   string   `json:"status"`
@@ -295,9 +294,6 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 					}
 					if tagUpper := strings.ToUpper(tag); tagUpper == tag {
 						p.Status = tag
-						if tagUpper == "DONE" {
-							p.Done = true
-						}
 					} else {
 						tag = strings.ToLower(tag)
 					}
@@ -343,6 +339,7 @@ type Repo struct {
 	Path      string               `json:"path"`
 	TagMap    map[string][]string  `json:"tagmap"`
 	Tags      []string             `json:"tags"`
+	Title     string               `json:"title"`
 	Updated   time.Time            `json:"updated"`
 	info      *RepoInfo
 }
@@ -492,7 +489,6 @@ func (r *Repo) Modify(ctx *Context, path, content, message string) error {
 			Type:    "blob",
 		}},
 	}, nil); err != nil {
-		log.Error("1")
 		return err
 	}
 	if tree.SHA == "" {
@@ -504,7 +500,6 @@ func (r *Repo) Modify(ctx *Context, path, content, message string) error {
 		Parents: []string{r.info.Commit},
 		Tree:    tree.SHA,
 	}, nil); err != nil {
-		log.Error("2")
 		return err
 	}
 	if commit.SHA == "" {
@@ -514,7 +509,6 @@ func (r *Repo) Modify(ctx *Context, path, content, message string) error {
 	if err := ctx.Call("/repos/"+r.Path+"/git/refs/heads/master", ref, nil, &RefUpdate{
 		SHA: commit.SHA,
 	}); err != nil {
-		log.Error("3")
 		return err
 	}
 	if ref.Object.SHA == "" {
@@ -676,6 +670,7 @@ func main() {
 		runtime.Exit(1)
 	}
 
+	repo.Title = *title
 	repo.Updated = time.Now().UTC()
 	repoJSON, err := json.Marshal(repo)
 	if err != nil {
@@ -720,8 +715,7 @@ func main() {
 <title>` + html.EscapeString(*title) + `</title>
 <link href="//fonts.googleapis.com/css?family=Abel|Coustard:400" rel=stylesheet>
 <link href=/.static/` + assets["planfile.css"] + ` rel=stylesheet>
-<body><script>DATA = ['` + *gaHost + `', '` + *gaID + `', '` + html.EscapeString(*title) + `', '/.static/` +
-		assets["swf/ZeroClipboard.swf"] + `', `)
+<body><script>DATA = ['` + *gaHost + `', '` + *gaID + `', `)
 
 	footer := []byte(`];</script>
 <script src=/.static/` + assets["planfile.js"] + `></script>
@@ -783,6 +777,13 @@ func main() {
 
 	notAuthorised := []byte("ERROR: Not Authorised!")
 
+	savedHeader := []byte(`<!doctype html>
+<meta charset=utf-8>
+<title>` + html.EscapeString(*title) + `</title>
+<body><script>SAVED="`)
+
+	savedFooter := []byte(`"</script><script src=/.static/` + assets["planfile.js"] + `></script>`)
+
 	refresh := func(ctx *Context) {
 		err := repo.Load()
 		if err != nil {
@@ -831,6 +832,7 @@ func main() {
 		content := strings.Replace(ctx.FormValue("content"), "\r\n", "\n", -1)
 		tags := ctx.FormValue("tags")
 		title := ctx.FormValue("title")
+		redir := "/"
 		if ctx.FormValue("section") == "on" {
 			if id != "/" {
 				content = fmt.Sprintf(`---
@@ -840,8 +842,18 @@ title: %s
 ---
 
 %s`, id, tags, title, content)
+				if len(tags) > 0 {
+					if tags[0] == '#' {
+						if len(tags) > 1 {
+							redir = "/" + tags[1:]
+						}
+					} else {
+						redir = "/" + tags
+					}
+				}
 			}
 		} else {
+			redir = "/.item." + id
 			content = fmt.Sprintf(`---
 id: %s
 tags: %s
@@ -858,7 +870,7 @@ title: %s
 		} else {
 			message = "Added: " + title
 		}
-		log.Info("SAVE PATH: %q", path)
+		log.Info("SAVE PATH: %q for ID %q", path, id)
 		err = repo.Modify(ctx, path, content, message)
 		if err != nil {
 			if update {
@@ -869,7 +881,9 @@ title: %s
 			return
 		}
 		refresh(ctx)
-		ctx.Redirect("/.saved")
+		ctx.Write(savedHeader)
+		ctx.Write([]byte(html.EscapeString(redir)))
+		ctx.Write(savedFooter)
 	}
 
 	register("/.modify", func(ctx *Context) {
@@ -933,15 +947,6 @@ title: %s
 		defer mutex.Unlock()
 		refresh(ctx)
 		ctx.Redirect("/")
-	})
-
-	saved := []byte(`<!doctype html>
-<meta charset=utf-8>
-<title>` + html.EscapeString(*title) + `</title>
-<body><script>SAVED=1</script><script src=/.static/` + assets["planfile.js"] + `></script>`)
-
-	register("/.saved", func(ctx *Context) {
-		ctx.Write(saved)
 	})
 
 	mimetypes := map[string]string{

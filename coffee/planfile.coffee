@@ -345,7 +345,7 @@ define 'planfile', (exports, root) ->
         entry = $sections[tagNorm[id]] = domly ['div.entry'], $entries, true
         setInnerHTML entry, pf.rendered, 'content'
       if isAuth
-        domly ['div.tags', ['a.edit', href: '/.editor', onclick: (editor = getEditor(id, pf.path, pf.title, pf.content, '', '/.modify', true)), 'Edit']], entry
+        domly ['div.tags', ['a.edit', href: '/.editor', onclick: (editor = getEditor(id, pf.path, pf.title, pf.content, id, '/.modify', true)), 'Edit']], entry
         selects.push ["Section: #{selectID}", editor]
     for id, pf of repo.planfiles
       tags = ['div.tags']

@@ -24,7 +24,8 @@ $monospace: Monaco, Consolas, "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "L
 body
   background: #fff
   font-family: Lato, Helvetica, Arial, serif
-  font-size: 16px
+  font-family: Verdana, Arial, sans-serif
+  font-size: 13px
 
 a
   text-decoration: none
@@ -34,12 +35,12 @@ a
     text-decoration: underline
 
 code
-  background: #fefbf6
-  border: 1px solid #dbd0be
-  background: #f0f0f0
-  border: 1px solid #dadada
+  background: #f8f8ff
+  border: 1px solid #c5c5ff
   font-family: $monospace
   font-size: 13px
+  margin-left: 2px
+  margin-right: 2px
   padding: 2px 4px
 
 h1, h2, h3, h4, h5
@@ -53,10 +54,10 @@ h2
   font-size: 28px
 
 h3
-  font-size: 21px
+  font-size: 22px
 
 h4
-  font-size: 16px
+  font-size: 18px
 
 h5
   font-size: 14px
@@ -72,13 +73,16 @@ label
   -webkit-user-select: none
   user-select: none
 
-li, ol, ul
-  list-style: none
-  color: $grey
+li
+  margin-bottom: 5px
+
+ol, ul
+  margin-left: 20px
+  margin-bottom: 20px
 
 p
   font-weight: 400
-  line-height: 24px
+  line-height: 22px
   margin-bottom: 20px
 
 textarea, input[type=text]
@@ -89,13 +93,23 @@ textarea, input[type=text]
 
 // * Layout
 
+.clear
+  clear: both
+  height: 0px
+  width: 0px
+
 .container
   clear: both
   margin: 0px auto
   width: 920px
 
+.container-ext
+  margin: 0px auto
+  width: 960px
+
 .header
   background-image: -webkit-linear-gradient(270deg, #fafafa, #e8e8e8)
+  background-image: -moz-linear-gradient(270deg, #fafafa, #e8e8e8)
   background-image: linear-gradient(0deg, #fafafa, #e8e8e8)
   border-bottom: 1px solid #ccc
   height: 57px
@@ -118,18 +132,19 @@ textarea, input[type=text]
 
 .entries
   margin-right: 20px
-  width: 680px
+  width: 660px
 
   .entry
     margin-bottom: 30px
 
     .content
-      margin-left: 23px
+      margin-left: 140px
 
     .tags
       clear: left
+      margin-left: 140px
       overflow: auto
-      a
+      a.edit
         background: #f8f8f8
         border-radius: 3px
         color: #999
@@ -139,11 +154,19 @@ textarea, input[type=text]
         margin-right: 10px
         padding: 4px 5px
         text-decoration: none
+        &:hover
+          background: #686868
+          color: #fff
+      a.perma
+        color: #000
+        float: right
+        margin-left: 4px
+        margin-top: 2px
       span
         border-radius: 3px
         float: right
         font-size: 10px
-        margin-left: 10px
+        margin-left: 5px
         padding: 4px 6px
         text-decoration: none
 
@@ -155,7 +178,7 @@ textarea, input[type=text]
 .sidebar
   float: right
   padding: 0px 10px
-  width: 220px
+  width: 240px
 
   div
     margin-bottom: 22px
@@ -177,6 +200,73 @@ textarea, input[type=text]
       background: #696969
       color: #fff
 
+.status
+  background: #e7e7e7
+  border-right: 3px solid #8a8a8a
+  color: #383838
+  font-size: 11px
+  padding: 5px 8px 5px 10px
+  // text-shadow: 1px 1px 0 #eee
+
+  &:before
+    border-radius: 10px
+    color: #fff
+    margin-right: 10px
+
+.status-done
+  background: #f0ffe1
+  border-color: #5ba622
+
+  &:before
+    background: #5ba622
+    content: "✔"
+    font-weight: 700
+    padding: 1px 3px 1px 4px
+
+.status-inreview
+  background: #e5f8ff
+  border-color: #038fc0
+
+  &:before
+    background: #038fc0
+    content: "?"
+    font-weight: 700
+    padding: 0px 6px 0px 5px
+
+.status-review
+  background: #e9cfff
+  border-color: #8106e0
+
+  &:before
+    background: #8106e0
+    content: "!"
+    font-weight: 700
+    padding: 0px 6px
+
+.status-todo
+  background: #f8dfd8
+  border-color: #d85027
+
+  &:before
+    background: #d85027
+    content: "✘"
+    padding: 1px 4px 2px 4px
+
+.status-wip
+  background: #ffedcf
+  border-color: #ffa300
+
+  &:before
+    background: #ffa300
+    content: "★"
+    padding: 1px 3px 2px 3px
+
+.status-wrap
+  float: left
+  margin-right: 18px
+  text-align: right
+  width: 120px
+
 .tag
   background: #696969
   border-radius: 5px
@@ -189,25 +279,14 @@ textarea, input[type=text]
   background: #eee
   color: #000
 
-.tag-state-done
-  background: darkGreen
-
-.tag-state-needsreview
-  background: #ffe2ff
-  color: #000
-
-.tag-state-todo
-  background: darkRed
-
-.tag-state-wip
-  background: #b1f2ec
-  color: #000
-
 .tag-user
   background: #3056bf
 
 .title
-  padding-left: 5px
+  font-family: Coustard
+  font-size: 16px
+  font-weight: 400
+  margin-bottom: 10px
 
 // * Controls
 
@@ -239,71 +318,121 @@ textarea, input[type=text]
       vertical-align: middle
 
 .editor
+  background: #f7f7f7
   border: 1px solid #ececec
   clear: both
-  padding: 20px
-  width: 918px
-  background: #F7F7F7
   margin-bottom: 50px
+  padding: 20px
+  width: 878px
   .controls
     float: right
     margin: 15px 0
     a
       background: #fff
-      color: $grey
-      margin-right: 10px
-      cursor: pointer
-      padding: 4px 9px
-      border: 1px solid #E7E7E7
+      border: 1px solid #e7e7e7
       border-radius: 3px
+      color: $grey
+      cursor: pointer
+      margin-right: 10px
+      padding: 4px 9px
       &:hover
-        color: #A3A3A3
+        color: #a3a3a3
+  .padtop
+    margin-left: 5px
+    margin-top: 15px
+    .loader
+      color: $green
+      margin-left: 30px
   .preview
-    margin: 20px 0
+    background: #fff
+    margin: 10px 0px 0px 0px
+    padding: 20px 20px 5px 20px
+  label
+    margin-left: 5px
   textarea
-    width: 896px
-    border: 1px solid #CCC
+    border: 1px solid #ccc
     border-top: 0
+    color: $grey
     height: 300px
     padding: 10px
-    color: $grey
+    width: 856px
   input
     color: $grey
     &[type=text]
-      width: 896px
-      border: 1px solid #CCC
+      border: 1px solid #ccc
       padding: 15px 10px
+      width: 856px
       &[name=title]
         border-radius: 3px 3px 0 0
       &[name=tags]
         border-radius: 3px
         margin: 10px 0
     &[type=submit]
-      cursor: pointer
-      padding: 5px 10px
+      background: $green
       border: none
       border-radius: 3px
+      color: white
+      cursor: pointer
       font-size: 15px
       margin-right: 10px
-      background: $green
-      color: white
+      padding: 5px 10px
       &:hover
         background: $lightgreen
-    &[type=checkbox]
-      float: left
-      vertical-align: middle
-      height: 21px
-      margin-right: 5px
   .button
     float: right
+
+.select
+  margin-bottom: 20px
+
+  .results
+    border-bottom: 1px solid #888
+    border-left: 1px solid #888
+    border-right: 1px solid #888
+    box-shadow: 0px 0px 7px #cacaca
+    color: #101010
+    cursor: pointer
+    margin-left: 140px
+    -khtml-user-select: none
+    -moz-user-select: none
+    -ms-user-select: none
+    -webkit-user-select: none
+    user-select: none
+    width: 520px
+
+    .item
+      padding: 10px
+
+      &:hover
+        background: #f8f8ff
+
+    .selected
+      background: #f8f8ff
+
+  .type
+    float: left
+    font-family: Coustard
+    font-size: 16px
+    font-weight: 400
+    padding-top: 8px
+    text-align: right
+    width: 130px
+
+  input
+    margin-left: 10px
+    padding: 8px 5px
+    width: 508px
 
 // * Source code syntax highlighting
 
 .syntax
+  border: 1px solid #cacaca
+  border-radius: 5px
+  box-shadow: 0px 0px 7px #cacaca
+  color: #101010
   font-size: 13px
   margin-left: 30px
   margin-bottom: 25px
-  border-left: 5px solid #EBEBEB
+  padding: 4px 0px 6px 12px
   pre
     line-height: 1.8em
   .c, .cm, .cp, .cs, .c1
@@ -353,7 +482,7 @@ textarea, input[type=text]
   .n
     color: #101010
   .na
-    color: #bbbbbb
+    color: #676767
   .nb
     color: #a535ae
   .nc

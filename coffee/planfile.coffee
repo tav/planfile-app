@@ -5,7 +5,7 @@ define 'planfile', (exports, root) ->
 
   if SAVED?
     delete root.localStorage['id']
-    root.location = '/'
+    root.location = SAVED
     return
 
   doc = root.document
@@ -15,18 +15,34 @@ define 'planfile', (exports, root) ->
   loc = root.location
   ls = root.localStorage
 
+  $selectDiv = $selectInput = $selectType = null
+  $selectResults = []
+
+  selectCb = []
+  selectCount = 5
+  selectIdx = 0
+  selectInfo = {}
+  selectMode = null
+  selectOn = false
+  selectPrev = null
+  selectTypes =
+    edit: "Edit Item →"
+    filter: "Toggle Filter →"
+
   normTag = {}
+  original = []
   state = []
   tagNorm = {}
   tagTypes = {}
 
-  $dep = $editor = $form = $main = $preview = $root = null
+  $dep = $editor = $form = $loader = $main = $preview = $root = null
   $formContent = $formID = $formPath = $formSection = $formTags = $formTitle = $formXSRF = null
   $controls = {}
   $planfiles = {}
   $sections = {}
 
-  [ANALYTICS_HOST, ANALYTICS_ID, siteTitle, clippy, repo, username, avatar, xsrf, isAuth] = root.DATA
+  [ANALYTICS_HOST, ANALYTICS_ID, repo, username, avatar, xsrf, isAuth] = root.DATA
+  siteTitle = repo.title
 
   ajax = (url, data, callback) ->
     obj = new XMLHttpRequest()
@@ -36,12 +52,71 @@ define 'planfile', (exports, root) ->
     obj.send data
     obj
 
+  escape = (evt) ->
+    evt ||= root.event
+    if evt.keyCode is 27
+      if $formContent.value is original[0] and $formTags.value is original[1] and $formTitle.value is original[2]
+        hideEditor()
+        if '.editor' in state
+          if state.length is 1
+            state = []
+          else
+            state.splice state.indexOf('.editor'), 1
+          setHistory()
+
   getDeps = (id, planfiles, collect) ->
     collect[id] = 1
     if not planfiles[id]
       return
     for id in planfiles[id].depends
       getDeps(id, planfiles, collect)
+
+  getEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
+    (evt) ->
+      hideSelect() if selectOn
+      if not viaPop
+        state.push '.editor'
+        state.sort()
+        history.pushState state, siteTitle, '/.editor'
+      $form.action = action
+      $formContent.value = original[0] = content
+      $formID.value = id
+      $formPath.value = path
+      $formTags.value = original[1] = tags
+      $formTitle.value = original[2] = title
+      if isSection
+        $formSection.checked = true
+        $formTags.placeholder = 'Overview for Tag:'
+        if id is '/'
+          $formTags.value = original[1] = 'README'
+          $formTitle.value = original[2] = 'README'
+      else
+        $formSection.checked = false
+        $formTags.placeholder = 'Tags'
+      $preview.innerHTML = ''
+      doc.onkeydown = escape
+      doc.onkeyup = null
+      show $editor
+      if viaPop
+        if id
+          $formTitle.focus()
+      else
+        $formTitle.focus()
+      root.scroll 0, 0
+      if evt
+        evt.preventDefault()
+
+  getSelectCallback = (cb) ->
+    (evt) ->
+      if evt
+        evt.preventDefault()
+      hideSelect()
+      cb()
+
+  getShowID = (id) ->
+    (evt) ->
+      evt.preventDefault()
+      root.prompt "Copy this:", id
 
   getState = ->
     if path = loc.pathname.substr 1, loc.pathname.length
@@ -61,49 +136,132 @@ define 'planfile', (exports, root) ->
 
   getToggler = (tag) ->
     (evt) ->
-      evt.preventDefault()
-      if tag in state
-        state.splice state.indexOf(tag), 1
-      else
-        state.push tag
-      if state.length
-        state.sort()
-        url = '/' + state.join '/'
-      else
-        url = '/'
-      history.pushState state, siteTitle, url
-      renderState state, true
-
-  getUpdatedEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
-    (evt) ->
-      if not viaPop
-        state.push '.editor'
-        state.sort()
-        history.pushState state, siteTitle, '/.editor'
-      $form.action = action
-      $formContent.value = content
-      $formID.value = id
-      $formPath.value = path
-      $formTags.value = tags
-      $formTitle.value = title
-      if isSection
-        $formSection.checked = true
-        $formTags.placeholder = 'Overview for Tag:'
-        if id is '/'
-          $formTitle.value = 'README'
-          $formTags.value = 'README'
-      else
-        $formSection.checked = false
-        $formTags.placeholder = 'Tags'
-      $preview.innerHTML = ''
-      show $editor
-      $formTitle.focus()
-      root.scroll 0, 0
       if evt
         evt.preventDefault()
+      if tag in state
+        if state.length is 1
+          state = []
+        else
+          state.splice state.indexOf(tag), 1
+      else
+        replace = false
+        if state.length and tag isnt '.deps'
+          for existing in state
+            if existing.lastIndexOf('.item.', 0) is 0
+              replace = true
+        if replace
+          state = [tag]
+        else
+          state.push tag
+      setHistory()
+      renderState state, true
+
+  handleKeys = (evt) ->
+    evt ||= root.event
+    key = evt.keyCode
+    if key is 78
+      getEditor('', '', '', '', '', '/.new')()
+    else if key is 72
+      if state.length
+        state = []
+        setHistory()
+        renderState state, true
+    else if key is 69
+      showSelect 'edit'
+    else if key is 70
+      showSelect 'filter'
+
+  handleSelectMetaKeys = (evt) ->
+    evt ||= root.event
+    key = evt.keyCode
+    if key is 27
+      hideSelect()
+    else if key is 13
+      if cb = selectCb[selectIdx]
+        cb()
+      evt.preventDefault()
+    else if key is 40
+      if selectIdx < (l = selectCb.length) - 1
+        selectIdx++
+        i = 0
+        while i < l
+          if i == selectIdx
+            $selectResults[i].className = 'item selected'
+          else
+            $selectResults[i].className = 'item'
+          i++
+      evt.preventDefault()
+    else if key is 38
+      if selectIdx
+        selectIdx--
+        i = 0
+        l = selectCb.length
+        while i < l
+          if i == selectIdx
+            $selectResults[i].className = 'item selected'
+          else
+            $selectResults[i].className = 'item'
+          i++
+      evt.preventDefault()
+
+  handleSelectKeys = (evt) ->
+    evt ||= root.event
+    key = evt.keyCode
+    if not (key is 27 or key is 40 or key is 38)
+      if (value = $selectInput.value) is selectPrev
+        return
+      selectPrev = value
+      if value
+        i = 0
+        l = value.length
+        pat = ''
+        while i < l
+          # TODO(tav): compare with:     /[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&'
+          pat += value.charAt(i).replace(/([.?*+^$[\]\\(){}|-])/g, '\\$1') + '+' # '+.*'
+          i++
+        regex = new RegExp(pat, 'i')
+        info = selectInfo[selectMode]
+        i = 0
+        j = 0
+        l = info.length
+        selectCb = []
+        while i < l
+          [item, cb] = info[i]
+          if regex.test item
+            elem = $selectResults[j]
+            elem.innerHTML = item
+            elem.onclick = selectCb[j] = getSelectCallback cb
+            show elem
+            j++
+            if j == 1
+              selectIdx = 0
+              elem.className = 'item selected'
+            else
+              elem.className = 'item'
+            if j is selectCount
+              break
+          i++
+        while j < selectCount
+          hide $selectResults[j]
+          j++
+      else
+        selectResults = []
+        for i in [0...selectCount]
+          hide $selectResults[i]
 
   hide = (element) ->
     element.style.display = 'none'
+
+  hideEditor = ->
+    hide $editor
+    doc.onkeydown = null
+    doc.onkeyup = handleKeys
+
+  hideSelect = ->
+    hide $selectDiv
+    selectOn = false
+    doc.onkeydown = null
+    doc.onkeyup = handleKeys
 
   initAnalytics = ->
     if ANALYTICS_ID and loc.hostname isnt 'localhost'
@@ -141,6 +299,15 @@ define 'planfile', (exports, root) ->
     return r
 
   renderEditor = ->
+    $selectDiv = domly ['div.select'], $main, true
+    $selectType = domly ['div.type'], $selectDiv, true
+    $selectInput = domly ['input', type: 'text'], $selectDiv, true
+    results = domly ['div.results'], $selectDiv, true
+    for i in [0...selectCount]
+      item = domly ['div.item', 'hi'], results, true
+      hide item
+      $selectResults.push item
+    hide $selectDiv
     $editor = domly ['div.editor'], $main, true
     $form = domly ['form', method: 'post', action: '/.new'], $editor, true
     append = (elems) ->
@@ -159,22 +326,27 @@ define 'planfile', (exports, root) ->
     padtop = append ['div.padtop']
     $formSection = domly ['input', type: 'checkbox', id: 'f0', name: 'section', onclick: swapTagMode(), checked: ''], padtop, true
     domly ['label', for: 'f0', ' Section'], padtop
+    $loader = domly ['span.loader'], padtop, true
     domly ['div.clear'], $editor
     $preview = domly ['div.preview'], $editor, true
     hide $editor
     hide $preview
 
   renderEntries = ->
+    selectInfo['edit'] = selects = []
     $entries = domly ['div.entries'], $main, true
     for id, pf of repo.sections
       if id is '/'
+        selectID = 'README'
         entry = $root = domly ['div.entry'], $entries, true
         setInnerHTML entry, pf.rendered, 'content'
       else
+        selectID = id
         entry = $sections[tagNorm[id]] = domly ['div.entry'], $entries, true
         setInnerHTML entry, pf.rendered, 'content'
       if isAuth
-        domly ['div.tags', ['a.edit', href: '/.editor', onclick: getUpdatedEditor(id, pf.path, pf.title, pf.content, '', '/.modify', true), 'Edit']], entry
+        domly ['div.tags', ['a.edit', href: '/.editor', onclick: (editor = getEditor(id, pf.path, pf.title, pf.content, '', '/.modify', true)), 'Edit']], entry
+        selects.push ["Section: #{selectID}", editor]
     for id, pf of repo.planfiles
       tags = ['div.tags']
       tags.push ['a.perma', href: "/.item.#{id}", '#']
@@ -184,13 +356,15 @@ define 'planfile', (exports, root) ->
         if tag.toUpperCase() isnt tag
           tags.push ["span.tag.tag-#{tagTypes[tag]}", tag]
       if isAuth
-        tags.push ['a.edit', href: '/.editor', onclick: getUpdatedEditor(id, pf.path, pf.title, pf.content, getTags(pf), '/.modify'), 'Edit']
+        tags.push ['a.edit', href: '/.editor', onclick: (editor = getEditor(id, pf.path, pf.title, pf.content, getTags(pf), '/.modify')), 'Edit']
       tags.push ['a.edit', href: "/.deps/.item.#{id}", 'Show Deps']
+      tags.push ['a.edit', href: "", onclick: getShowID("dep:#{id}"), 'Get ID']
       entry = $planfiles[id] = domly [
         'div.entry', ['div.status-wrap', ["span.status.status-#{pf.status.toLowerCase()}", pf.status]], ['div.title', pf.title or pf.path]
         ], $entries, true
       setInnerHTML entry, pf.rendered, 'content'
       domly ['div', tags], entry
+      selects.push [pf.title or pf.path, editor]
 
   renderHeader = ->
     header = ['div.container']
@@ -198,13 +372,14 @@ define 'planfile', (exports, root) ->
       header.push ['a.button.logout', href: "/.logout", "Logout #{username}", ['img', src: avatar]]
       if isAuth
         # header.push ['a.button', href: '/.refresh', 'Refresh!']
-        header.push ['a.button.edit', href: '/.create', onclick: getUpdatedEditor('', '', '', '', [], '/.new'), '+ New Entry']
+        header.push ['a.button.edit', href: '/.create', onclick: getEditor('', '', '', '', '', '/.new'), '+ New Entry']
     else
       header.push ['a.button.login', href: '/.login', 'Login with GitHub']
     header.push ['div.logo', ['a', href: '/', siteTitle]]
     domly ['div.header', header], body
 
   renderSidebar = ->
+    selectInfo['filter'] = selects = []
     $elems = domly ['div.sidebar'], $main, true
     if '.deps' in state
       ext = '.selected'
@@ -213,7 +388,9 @@ define 'planfile', (exports, root) ->
     append = (elem) ->
       div = domly ['div'], $elems, true
       domly elem, div, true
-    $dep = append ["a.#{ext}", href: '/.deps', unselectable: 'on', onclick: getToggler('.deps'), 'SHOW DEPS']
+    toggler = getToggler('.deps')
+    $dep = append ["a.#{ext}", href: '/.deps', unselectable: 'on', onclick: toggler, 'SHOW DEPS']
+    selects.push ['SHOW DEPS', toggler]
     for tag in repo.tags
       norm = tag
       s = tag[0]
@@ -233,7 +410,9 @@ define 'planfile', (exports, root) ->
         ext = '.selected'
       else
         ext = ''
-      $controls[norm] = append ["a.#{ext}", href: "/#{norm}", unselectable: 'on', onclick: getToggler(norm), tag]
+      toggler = getToggler(norm)
+      $controls[norm] = append ["a.#{ext}", href: "/#{norm}", unselectable: 'on', onclick: toggler, tag]
+      selects.push [tag, toggler]
 
   renderState = (s, setControls) ->
     if setControls
@@ -254,14 +433,14 @@ define 'planfile', (exports, root) ->
       if l = s.length
         if s[0] is '.editor'
           if ls['id']?
-            getUpdatedEditor(ls['id'], ls['path'], ls['title'], ls['content'], ls['tags'], ls['action'], ls['section'] is '1', true)()
+            getEditor(ls['id'], ls['path'], ls['title'], ls['content'], ls['tags'], ls['action'], ls['section'] is '1', true)()
           else
-            getUpdatedEditor('', '', '', '', '', '/.new', false, true)()
+            getEditor('', '', '', '', '', '/.new', false, true)()
           s = s.slice 1, l
         else
-          hide $editor
+          hideEditor()
       else
-        hide $editor
+        hideEditor()
       if l = s.length
         found = null
         if l is 1
@@ -297,11 +476,19 @@ define 'planfile', (exports, root) ->
             show $planfiles[id]
         return
     else
-      hide $editor
+      hideEditor()
     if $root
       show $root
     for _, planfile of $planfiles
       show planfile
+
+  setHistory = ->
+    if state.length
+      state.sort()
+      url = '/' + state.join '/'
+    else
+      url = '/'
+    history.pushState state, siteTitle, url
 
   setInnerHTML = (elem, html, klass) ->
     div = doc.createElement 'div'
@@ -322,6 +509,20 @@ define 'planfile', (exports, root) ->
       if xhr.status is 200
         $preview.innerHTML = xhr.responseText
 
+  showSelect = (t) ->
+    selectOn = true
+    selectMode = t
+    selectPrev = ''
+    $selectType.innerHTML = selectTypes[t]
+    $selectInput.value = ""
+    for i in [0...selectCount]
+      hide $selectResults[i]
+    doc.onkeyup = handleSelectKeys
+    doc.onkeydown = handleSelectMetaKeys
+    show $selectDiv
+    $selectInput.focus()
+    return
+
   submitForm = ->
     if not $formID.value
       $formID.value = $formTitle.value.toLowerCase().replace(/[^a-zA-Z0-9]+/g, '-')
@@ -337,6 +538,16 @@ define 'planfile', (exports, root) ->
       ls['section'] = '1'
     else
       ls['section'] = '0'
+    i = 1
+    t = 'SAVING '
+    indicator = ->
+      if not (i % 20)
+        t = 'SAVING '
+      else
+        t += '.'
+      i++
+      $loader.innerHTML = t
+    setInterval indicator, 100
 
   swapTagMode = ->
     ->
@@ -344,6 +555,9 @@ define 'planfile', (exports, root) ->
         $formTags.placeholder = 'Overview for Tag:'
       else
         $formTags.placeholder = 'Tags'
+
+  if isAuth
+    doc.onkeyup = handleKeys
 
   exports.run = ->
     initAnalytics()

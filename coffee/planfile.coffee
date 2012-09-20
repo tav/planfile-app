@@ -582,6 +582,8 @@ define 'planfile', (exports, root) ->
       if !root[prop]
         alert "Sorry, this app only works on newer browsers with HTML5 features :("
         return
+    if doc.createTouch?
+      body.className = 'touch'
     hide body
     state = getState()
     renderHeader()

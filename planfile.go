@@ -55,7 +55,7 @@ type Context struct {
 	token  *oauth.Token
 }
 
-func (ctx *Context) Call(path string, v interface{}, post interface{}, patch interface{}) error {
+func (ctx *Context) Call(path string, v interface{}, post interface{}, patch bool) error {
 	var (
 		err error
 		req *http.Request
@@ -67,15 +67,12 @@ func (ctx *Context) Call(path string, v interface{}, post interface{}, patch int
 		if err != nil {
 			return err
 		}
-		req, err = http.NewRequest("POST", "https://api.github.com"+path, body)
-	} else if patch != nil {
-		body := &bytes.Buffer{}
-		enc := json.NewEncoder(body)
-		err = enc.Encode(patch)
-		if err != nil {
-			return err
+		if patch {
+			req, err = http.NewRequest("PATCH", "https://api.github.com"+path, body)
+		} else {
+			req, err = http.NewRequest("POST", "https://api.github.com"+path, body)
 		}
-		req, err = http.NewRequest("PATCH", "https://api.github.com"+path, body)
+		req.Header.Add("Content-Type", "application/json")
 	} else {
 		req, err = http.NewRequest("GET", "https://api.github.com"+path, nil)
 	}
@@ -104,8 +101,14 @@ func (ctx *Context) Call(path string, v interface{}, post interface{}, patch int
 		return err
 	}
 	defer resp.Body.Close()
-	if post != nil && resp.StatusCode != 201 {
-		return errors.New("github: object not created: " + path)
+	if post != nil {
+		if patch {
+			if resp.StatusCode != 200 {
+				return errors.New("github call failed: " + path)
+			}
+		} else if resp.StatusCode != 201 {
+			return errors.New("github call failed: " + path)
+		}
 	}
 	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(v)
@@ -488,7 +491,7 @@ func (r *Repo) Modify(ctx *Context, path, content, message string) error {
 			Path:    path,
 			Type:    "blob",
 		}},
-	}, nil); err != nil {
+	}, false); err != nil {
 		return err
 	}
 	if tree.SHA == "" {
@@ -499,16 +502,16 @@ func (r *Repo) Modify(ctx *Context, path, content, message string) error {
 		Message: message,
 		Parents: []string{r.info.Commit},
 		Tree:    tree.SHA,
-	}, nil); err != nil {
+	}, false); err != nil {
 		return err
 	}
 	if commit.SHA == "" {
 		return errors.New("couldn't save commit to github: " + path)
 	}
 	ref := &Ref{}
-	if err := ctx.Call("/repos/"+r.Path+"/git/refs/heads/master", ref, nil, &RefUpdate{
+	if err := ctx.Call("/repos/"+r.Path+"/git/refs/heads/master", ref, &RefUpdate{
 		SHA: commit.SHA,
-	}); err != nil {
+	}, true); err != nil {
 		return err
 	}
 	if ref.Object.SHA == "" {
@@ -919,7 +922,7 @@ title: %s
 		ctx.SetCookie("token", hex.EncodeToString(jtok))
 		ctx.token = tok
 		user := &User{}
-		err = ctx.Call("/user", user, nil, nil)
+		err = ctx.Call("/user", user, nil, false)
 		if err != nil {
 			ctx.Error("Couldn't load user info", err)
 			return

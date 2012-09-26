@@ -56,13 +56,18 @@ define 'planfile', (exports, root) ->
     evt ||= root.event
     if evt.keyCode is 27
       if $formContent.value is original[0] and $formTags.value is original[1] and $formTitle.value is original[2]
-        hideEditor()
-        if '.editor' in state
-          if state.length is 1
-            state = []
-          else
-            state.splice state.indexOf('.editor'), 1
-          setHistory()
+        escapeEditor()
+
+  escapeEditor = (evt) ->
+    if evt
+      evt.preventDefault()
+    hideEditor()
+    if '.editor' in state
+      if state.length is 1
+        state = []
+      else
+        state.splice state.indexOf('.editor'), 1
+      setHistory()
 
   getDeps = (id, planfiles, collect) ->
     collect[id] = 1
@@ -252,7 +257,7 @@ define 'planfile', (exports, root) ->
   hide = (element) ->
     element.style.display = 'none'
 
-  hideEditor = ->
+  hideEditor = (evt) ->
     hide $editor
     doc.onkeydown = null
     doc.onkeyup = handleKeys
@@ -324,7 +329,7 @@ define 'planfile', (exports, root) ->
     $formTags = append ['input', type: 'text', name: 'tags', placeholder: 'Tags']
     append ['div.controls',
             ['a', onclick: showPreview, 'Render Preview'],
-            ['a', onclick: (-> hide($editor)), 'Cancel'],
+            ['a', onclick: escapeEditor, 'Cancel'],
             ['input', type: 'submit', onclick: submitForm, value: 'Save'],
           ]
     padtop = append ['div.padtop']

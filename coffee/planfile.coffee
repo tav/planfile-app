@@ -341,7 +341,7 @@ define 'planfile', (exports, root) ->
   renderEditor = ->
     $selectDiv = domly ['div.select'], $main, true
     $selectType = domly ['div.type'], $selectDiv, true
-    $selectInput = domly ['input', type: 'text'], $selectDiv, true
+    $selectInput = domly ['input', spellcheck: '', type: 'text'], $selectDiv, true
     $selectWrap = domly ['div.results'], $selectDiv, true
     $selectWrap.onmouseover = selectOver
     $selectWrap.onmouseout = selectOut
@@ -584,11 +584,20 @@ define 'planfile', (exports, root) ->
     doc.onkeyup = handleSelectKeys
     doc.onkeydown = handleSelectMetaKeys
     show $selectDiv
-    if state.length and (item = state[state.length-1]).lastIndexOf('.item.', 0) is 0
-      if plan = repo.planfiles[item.slice 6]
+    if state.length
+      if t is 'edit' and (item = state[state.length-1]).lastIndexOf('.item.', 0) is 0 and plan = repo.planfiles[item.slice 6]
         $selectInput.value = plan.title
         handleSelectKeys null, true
         $selectInput.select()
+      else if t is 'filter'
+        found = false
+        for elem in state
+          if $controls[elem]
+            $selectInput.value = normTag[elem]
+            handleSelectKeys null, true
+            $selectInput.select()
+        if not found
+          $selectInput.focus()
       else
         $selectInput.focus()
     else

@@ -193,6 +193,11 @@ define 'planfile', (exports, root) ->
       showSelect 'filter'
     else if key is 71
       showSelect 'go'
+    else if key is 76
+      if username
+        doc.location = '/.logout'
+      else
+        doc.location = '/.login'
 
   handleSelectMetaKeys = (evt) ->
     evt ||= root.event

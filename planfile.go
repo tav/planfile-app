@@ -334,6 +334,17 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 	return
 }
 
+type listing struct {
+	id    string
+	title string
+}
+
+type listings []listing
+
+func (s listings) Len() int           { return len(s) }
+func (s listings) Less(i, j int) bool { return s[i].title < s[j].title }
+func (s listings) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
 type Repo struct {
 	Avatars   map[string]string    `json:"avatars"`
 	Ordering  []string             `json:"ordering"`
@@ -361,6 +372,7 @@ func (r *Repo) Exists(path string) bool {
 }
 
 func (r *Repo) Load() error {
+	log.Info("load start: %s", time.Now())
 	log.Info("loading repo: %s", r.Path)
 	url := "https://github.com/" + r.Path + "/tarball/master"
 	resp, err := httpClient.Get(url)
@@ -461,14 +473,21 @@ func (r *Repo) Load() error {
 			ordering = append(ordering, id)
 		}
 	}
-	extra := []string{}
+	extra := listings{}
 	for id, _ := range planfiles {
 		if !contains(ordering, id) {
-			extra = append(extra, id)
+			pf := planfiles[id]
+			if pf.Title == "" {
+				extra = append(extra, listing{id, id})
+			} else {
+				extra = append(extra, listing{id, pf.Title})
+			}
 		}
 	}
-	sort.StringSlice(extra).Sort()
-	ordering = append(ordering, extra...)
+	sort.Sort(extra)
+	for _, elem := range extra {
+		ordering = append(ordering, elem.id)
+	}
 	r.Avatars = avatars
 	r.Ordering = ordering
 	r.Planfiles = planfiles
@@ -477,11 +496,12 @@ func (r *Repo) Load() error {
 	r.Tags = tags
 	r.info = nil
 	log.Info("successfully loaded repo: %s", r.Path)
+	log.Info("load end: %s", time.Now())
 	return nil
 }
 
 func (r *Repo) Modify(ctx *Context, path, content, message string) error {
-	log.Info("%q %q %q", path, message, content)
+	log.Info("mod start: %s", time.Now())
 	tree := &CommitTree{}
 	if err := ctx.Call("/repos/"+r.Path+"/git/trees", tree, &TreeUpdate{
 		Base: r.info.Tree,
@@ -517,11 +537,14 @@ func (r *Repo) Modify(ctx *Context, path, content, message string) error {
 	if ref.Object.SHA == "" {
 		return errors.New("couldn't update master on github: " + path)
 	}
+	log.Info("mod end: %s", time.Now())
 	return nil
 }
 
 func (r *Repo) UpdateInfo() error {
+	log.Info("update start: %s", time.Now())
 	if r.info != nil {
+		log.Info("update end1: %s", time.Now())
 		return nil
 	}
 	master := &Ref{}
@@ -554,7 +577,7 @@ func (r *Repo) UpdateInfo() error {
 		Files:  files,
 		Tree:   commit.Tree.SHA,
 	}
-	log.Info("REFS: %s %s", r.info.Commit, r.info.Files)
+	log.Info("update end2: %s", time.Now())
 	return nil
 }
 

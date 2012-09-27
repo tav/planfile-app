@@ -28,6 +28,7 @@ define 'planfile', (exports, root) ->
   selectTypes =
     edit: "Edit Item →"
     filter: "Toggle Filter →"
+    go: "Goto Item →"
 
   normTag = {}
   original = []
@@ -75,6 +76,14 @@ define 'planfile', (exports, root) ->
       return
     for id in planfiles[id].depends
       getDeps(id, planfiles, collect)
+
+  getGotoItem = (id) ->
+    (evt) ->
+      if evt
+        evt.preventDefault()
+      state = [".item.#{id}"]
+      setHistory()
+      renderState state, true
 
   getEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
     (evt) ->
@@ -175,6 +184,8 @@ define 'planfile', (exports, root) ->
       showSelect 'edit'
     else if key is 70
       showSelect 'filter'
+    else if key is 71
+      showSelect 'go'
 
   handleSelectMetaKeys = (evt) ->
     evt ||= root.event
@@ -346,6 +357,7 @@ define 'planfile', (exports, root) ->
 
   renderEntries = ->
     selectInfo['edit'] = selects = []
+    selectInfo['go'] = goSelects = []
     $entries = domly ['div.entries'], $main, true
     for id, pf of repo.sections
       if id is '/'
@@ -356,9 +368,10 @@ define 'planfile', (exports, root) ->
         selectID = id
         entry = $sections[tagNorm[id]] = domly ['div.entry'], $entries, true
         setInnerHTML entry, pf.rendered, 'content'
+      editor = getEditor(id, pf.path, pf.title, pf.content, id, '/.modify', true)
       if isAuth
-        domly ['div.tags', ['a.edit', href: '/.editor', onclick: (editor = getEditor(id, pf.path, pf.title, pf.content, id, '/.modify', true)), 'Edit']], entry
-        selects.push ["Section: #{selectID}", editor]
+        domly ['div.tags', ['a.edit', href: '/.editor', onclick: editor, 'Edit']], entry
+      selects.push ["Section: #{selectID}", editor]
     planfiles = repo.planfiles
     for id in repo.ordering
       pf = repo.planfiles[id]
@@ -371,8 +384,9 @@ define 'planfile', (exports, root) ->
       for tag in ptags
         if tag.toUpperCase() isnt tag
           tags.push ["span.tag.tag-#{tagTypes[tag]}", tag]
+      editor = getEditor(id, pf.path, pf.title, pf.content, getTags(pf), '/.modify')
       if isAuth
-        tags.push ['a.edit', href: '/.editor', onclick: (editor = getEditor(id, pf.path, pf.title, pf.content, getTags(pf), '/.modify')), 'Edit']
+        tags.push ['a.edit', href: '/.editor', onclick: editor, 'Edit']
       tags.push ['a.edit', href: "/.deps/.item.#{id}", 'Show Deps']
       tags.push ['a.edit', href: "", onclick: getShowID("dep:#{id}"), 'Get ID']
       entry = $planfiles[id] = domly [
@@ -381,6 +395,7 @@ define 'planfile', (exports, root) ->
       setInnerHTML entry, pf.rendered, 'content'
       domly ['div', tags], entry
       selects.push [pf.title or pf.path, editor]
+      goSelects.push [pf.title or pf.path, getGotoItem id]
 
   renderHeader = ->
     header = ['div.container']
@@ -593,8 +608,7 @@ define 'planfile', (exports, root) ->
       else
         $formTags.placeholder = 'Tags'
 
-  if isAuth
-    doc.onkeyup = handleKeys
+  doc.onkeyup = handleKeys
 
   exports.run = ->
     initAnalytics()

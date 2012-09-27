@@ -120,6 +120,13 @@ define 'planfile', (exports, root) ->
       if evt
         evt.preventDefault()
 
+  getFilterLabel = (id) ->
+    (title) ->
+      if id in state
+        "#{title} <div class=enabled>ON</div>"
+      else
+        title
+
   getSelectCallback = (cb) ->
     (evt) ->
       if evt
@@ -246,10 +253,18 @@ define 'planfile', (exports, root) ->
         l = info.length
         selectCb = []
         while i < l
-          [item, cb] = info[i]
+          data = info[i]
+          if data.length is 2
+            [item, cb] = data
+            meta = null
+          else
+            [item, cb, meta] = data
           if regex.test item
             elem = $selectResults[j]
-            elem.innerHTML = item
+            if meta
+              elem.innerHTML = meta(item)
+            else
+              elem.innerHTML = item
             elem.onclick = selectCb[j] = getSelectCallback cb
             show elem
             j++
@@ -443,7 +458,7 @@ define 'planfile', (exports, root) ->
         ext = ''
       toggler = getToggler(norm)
       $controls[norm] = append ["a.#{ext}", href: "/#{norm}", unselectable: 'on', onclick: toggler, tag]
-      selects.push [tag, toggler]
+      selects.push [tag, toggler, getFilterLabel(norm)]
 
   renderState = (s, setControls) ->
     if setControls

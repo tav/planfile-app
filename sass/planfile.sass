@@ -402,6 +402,14 @@ textarea, input[type=text]
     .item
       padding: 10px
 
+      .enabled
+        background: #696969
+        color: #fff
+        float: right
+        border-radius: 4px
+        margin-top: -3px
+        padding: 3px 5px
+
       &:hover
         background-image: -webkit-gradient(linear, 0% 0%, 0% 100%, color-stop(20%, #3875d7), color-stop(90%, #2a62bc))
         background-image: -webkit-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
@@ -411,6 +419,10 @@ textarea, input[type=text]
         background-image: linear-gradient(top, #3875d7 20%, #2a62bc 90%)
         color: #fff
 
+        .enabled
+          background: #fff
+          color: #000
+
     .selected
       background-image: -webkit-gradient(linear, 0% 0%, 0% 100%, color-stop(20%, #3875d7), color-stop(90%, #2a62bc))
       background-image: -webkit-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
@@ -419,6 +431,10 @@ textarea, input[type=text]
       background-image: -ms-linear-gradient(top, #3875d7 20%, #2a62bc 90%)
       background-image: linear-gradient(top, #3875d7 20%, #2a62bc 90%)
       color: #fff
+
+      .enabled
+        background: #fff
+        color: #000
 
   .type
     float: left

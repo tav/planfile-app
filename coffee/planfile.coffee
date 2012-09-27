@@ -356,7 +356,11 @@ define 'planfile', (exports, root) ->
       if isAuth
         domly ['div.tags', ['a.edit', href: '/.editor', onclick: (editor = getEditor(id, pf.path, pf.title, pf.content, id, '/.modify', true)), 'Edit']], entry
         selects.push ["Section: #{selectID}", editor]
-    for id, pf of repo.planfiles
+    planfiles = repo.planfiles
+    for id in repo.ordering
+      pf = repo.planfiles[id]
+      if not pf
+        continue
       tags = ['div.tags']
       tags.push ['a.perma', href: "/.item.#{id}", '#']
       ptags = pf.tags.slice(0)

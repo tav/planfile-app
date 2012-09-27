@@ -209,9 +209,12 @@ define 'planfile', (exports, root) ->
           i++
       evt.preventDefault()
 
-  handleSelectKeys = (evt) ->
-    evt ||= root.event
-    key = evt.keyCode
+  handleSelectKeys = (evt, force) ->
+    if force is true
+      key = 41
+    else
+      evt ||= root.event
+      key = evt.keyCode
     if not (key is 27 or key is 40 or key is 38)
       if (value = $selectInput.value) is selectPrev
         return
@@ -546,7 +549,15 @@ define 'planfile', (exports, root) ->
     doc.onkeyup = handleSelectKeys
     doc.onkeydown = handleSelectMetaKeys
     show $selectDiv
-    $selectInput.focus()
+    if state.length and (item = state[state.length-1]).lastIndexOf('.item.', 0) is 0
+      if plan = repo.planfiles[item.slice 6]
+        $selectInput.value = plan.title
+        handleSelectKeys null, true
+        $selectInput.select()
+      else
+        $selectInput.focus()
+    else
+      $selectInput.focus()
     return
 
   submitForm = ->

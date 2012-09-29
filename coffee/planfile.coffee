@@ -30,13 +30,14 @@ define 'planfile', (exports, root) ->
     filter: "Toggle Filter →"
     go: "Goto Item →"
 
+  countShowing = countTotal = 0
   normTag = {}
   original = []
   state = []
   tagNorm = {}
   tagTypes = {}
 
-  $dep = $editor = $form = $loader = $main = $preview = $root = null
+  $counter = $counterWrap = $dep = $editor = $form = $loader = $main = $preview = $root = null
   $formContent = $formID = $formPath = $formSection = $formTags = $formTitle = $formXSRF = null
   $controls = {}
   $planfiles = {}
@@ -81,9 +82,7 @@ define 'planfile', (exports, root) ->
     (evt) ->
       if evt
         evt.preventDefault()
-      state = [".item.#{id}"]
-      setHistory()
-      renderState state, true
+      updateState [".item.#{id}"]
 
   getEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
     (evt) ->
@@ -139,6 +138,13 @@ define 'planfile', (exports, root) ->
       evt.preventDefault()
       root.prompt "Copy this:", id
 
+  getShowTag = (tag) ->
+    (evt) ->
+      evt.preventDefault()
+      if state.length is 1 and state[0] is tag
+        return
+      updateState [tag]
+
   getState = ->
     if path = loc.pathname.substr 1, loc.pathname.length
       if path.charAt(path.length - 1) is '/'
@@ -174,8 +180,7 @@ define 'planfile', (exports, root) ->
           state = [tag]
         else
           state.push tag
-      setHistory()
-      renderState state, true
+      updateState state
 
   handleKeys = (evt) ->
     evt ||= root.event
@@ -184,9 +189,7 @@ define 'planfile', (exports, root) ->
       getEditor('', '', '', '', '', '/.new')()
     else if key is 72
       if state.length
-        state = []
-        setHistory()
-        renderState state, true
+        updateState []
     else if key is 69
       showSelect 'edit'
     else if key is 70
@@ -403,12 +406,12 @@ define 'planfile', (exports, root) ->
       ptags.reverse()
       for tag in ptags
         if tag.toUpperCase() isnt tag
-          tags.push ["span.tag.tag-#{tagTypes[tag]}", tag]
+          tags.push ["a.tag.tag-#{tagTypes[tag]}", href: "/#{tagNorm[tag]}", onclick: getShowTag(tagNorm[tag]), tag]
       editor = getEditor(id, pf.path, pf.title, pf.content, getTags(pf), '/.modify')
       if isAuth
         tags.push ['a.edit', href: '/.editor', onclick: editor, 'Edit']
       tags.push ['a.edit', href: "/.deps/.item.#{id}", 'Show Deps']
-      tags.push ['a.edit', href: "", onclick: getShowID("dep:#{id}"), 'Get ID']
+      tags.push ['a.edit', href: '/#', onclick: getShowID("dep:#{id}"), 'Get ID']
       entry = $planfiles[id] = domly [
         'div.entry', ['div.status-wrap', ["span.status.status-#{pf.status.toLowerCase()}", pf.status]], ['div.title', pf.title or pf.path]
         ], $entries, true
@@ -416,6 +419,9 @@ define 'planfile', (exports, root) ->
       domly ['div', tags], entry
       selects.push [pf.title or pf.path, editor]
       goSelects.push [pf.title or pf.path, getGotoItem id]
+      countTotal += 1
+    countShowing = countTotal
+    updateCounter()
 
   renderHeader = ->
     header = ['div.container']
@@ -432,16 +438,11 @@ define 'planfile', (exports, root) ->
   renderSidebar = ->
     selectInfo['filter'] = selects = []
     $elems = domly ['div.sidebar'], $main, true
-    if '.deps' in state
-      ext = '.selected'
-    else
-      ext = ''
     append = (elem) ->
       div = domly ['div'], $elems, true
       domly elem, div, true
-    toggler = getToggler('.deps')
-    $dep = append ["a.#{ext}", href: '/.deps', unselectable: 'on', onclick: toggler, 'SHOW DEPS']
-    selects.push ['SHOW DEPS', toggler]
+    $counter = append ['a', href: '/', '']
+    $counterWrap = $counter.parentNode
     for tag in repo.tags
       norm = tag
       s = tag[0]
@@ -464,6 +465,13 @@ define 'planfile', (exports, root) ->
       toggler = getToggler(norm)
       $controls[norm] = append ["a.#{ext}", href: "/#{norm}", unselectable: 'on', onclick: toggler, tag]
       selects.push [tag, toggler, getFilterLabel(norm)]
+    if '.deps' in state
+      ext = '.selected'
+    else
+      ext = ''
+    toggler = getToggler('.deps')
+    $dep = append ["a.#{ext}", href: '/.deps', unselectable: 'on', onclick: toggler, 'SHOW DEPS']
+    selects.push ['SHOW DEPS', toggler]
 
   renderState = (s, setControls) ->
     if setControls
@@ -499,6 +507,7 @@ define 'planfile', (exports, root) ->
           if tag.lastIndexOf('.item.', 0) is 0
             if plan = $planfiles[id = tag.slice 6]
               found = [id]
+              countShowing = 1
           else if $controls[tag]
             if $sections[tag]
               show $sections[tag]
@@ -523,8 +532,11 @@ define 'planfile', (exports, root) ->
             for id in found
               getDeps(id, repo.planfiles, collect)
             found = (id for id, _ of collect)
+          countShowing = 0
           for id in found
+            countShowing += 1
             show $planfiles[id]
+        updateCounter()
         return
     else
       hideEditor()
@@ -532,6 +544,8 @@ define 'planfile', (exports, root) ->
       show $root
     for _, planfile of $planfiles
       show planfile
+    countShowing = countTotal
+    updateCounter()
 
   selectOut = ->
     i = 0
@@ -636,6 +650,18 @@ define 'planfile', (exports, root) ->
         $formTags.placeholder = 'Overview for Tag:'
       else
         $formTags.placeholder = 'Tags'
+
+  updateCounter = ->
+    if countTotal is countShowing
+      $counter.innerHTML = "Showing All (#{countShowing})"
+    else
+      $counter.innerHTML = "Showing #{countShowing}/#{countTotal}"
+
+  updateState = (s) ->
+    state = s
+    setHistory()
+    renderState state, true
+    root.scroll 0, 0
 
   doc.onkeyup = handleKeys
 

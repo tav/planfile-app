@@ -27,8 +27,7 @@ define 'planfile', (exports, root) ->
   selectPrev = null
   selectTypes =
     edit: "Edit Item →"
-    filter: "Toggle Filter →"
-    go: "Goto Item →"
+    go: "Find/Filter →"
 
   countShowing = countTotal = 0
   normTag = {}
@@ -182,6 +181,28 @@ define 'planfile', (exports, root) ->
           state.push tag
       updateState state
 
+  gotoMainTag = ->
+    totals = {}
+    for _, planfile of $planfiles
+      if planfile.style.display isnt 'none'
+        for elem in planfile.querySelectorAll('a.tag')
+          split = elem.href.split '/'
+          tag = split[split.length-1].slice 0
+          if totals[tag]
+            totals[tag] += 1
+          else
+            totals[tag] = 1
+    max = 0
+    mainTag = null
+    for tag, count of totals
+      if count > max
+        max = count
+        mainTag = tag
+    if mainTag
+      if state.length is 1 and state[0] is mainTag
+        return
+      updateState [mainTag]
+
   handleKeys = (evt) ->
     evt ||= root.event
     key = evt.keyCode
@@ -193,14 +214,14 @@ define 'planfile', (exports, root) ->
     else if key is 69
       showSelect 'edit'
     else if key is 70
-      showSelect 'filter'
-    else if key is 71
       showSelect 'go'
     else if key is 76
       if username
         doc.location = '/.logout'
       else
         doc.location = '/.login'
+    else if key is 77
+      gotoMainTag()
 
   handleSelectMetaKeys = (evt) ->
     evt ||= root.event
@@ -380,7 +401,7 @@ define 'planfile', (exports, root) ->
 
   renderEntries = ->
     selectInfo['edit'] = selects = []
-    selectInfo['go'] = goSelects = []
+    goSelects = selectInfo['go']
     $entries = domly ['div.entries'], $main, true
     for id, pf of repo.sections
       if id is '/'
@@ -436,7 +457,7 @@ define 'planfile', (exports, root) ->
     domly ['div.header', header], body
 
   renderSidebar = ->
-    selectInfo['filter'] = selects = []
+    selectInfo['go'] = selects = []
     $elems = domly ['div.sidebar'], $main, true
     append = (elem) ->
       div = domly ['div'], $elems, true
@@ -471,7 +492,7 @@ define 'planfile', (exports, root) ->
       ext = ''
     toggler = getToggler('.deps')
     $dep = append ["a.#{ext}", href: '/.deps', unselectable: 'on', onclick: toggler, 'SHOW DEPS']
-    selects.push ['SHOW DEPS', toggler]
+    selects.push ['SHOW DEPS', toggler, getFilterLabel('.deps')]
 
   renderState = (s, setControls) ->
     if setControls

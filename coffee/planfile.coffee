@@ -39,6 +39,7 @@ define 'planfile', (exports, root) ->
   $counter = $counterWrap = $dep = $editor = $form = $loader = $main = $preview = $root = null
   $formContent = $formID = $formPath = $formSection = $formTags = $formTitle = $formXSRF = null
   $controls = {}
+  $controlWraps = {}
   $planfiles = {}
   $sections = {}
 
@@ -459,8 +460,11 @@ define 'planfile', (exports, root) ->
   renderSidebar = ->
     selectInfo['go'] = selects = []
     $elems = domly ['div.sidebar'], $main, true
-    append = (elem) ->
+    append = (elem, tag) ->
       div = domly ['div'], $elems, true
+      if tag
+        div.tag = tag
+        $controlWraps[tag] = div
       domly elem, div, true
     $counter = append ['a', href: '/', '']
     $counterWrap = $counter.parentNode
@@ -484,7 +488,7 @@ define 'planfile', (exports, root) ->
       else
         ext = ''
       toggler = getToggler(norm)
-      $controls[norm] = append ["a.#{ext}", href: "/#{norm}", unselectable: 'on', onclick: toggler, tag]
+      $controls[norm] = append ["a.#{ext}", href: "/#{norm}", unselectable: 'on', onclick: toggler, tag], norm
       selects.push [tag, toggler, getFilterLabel(norm)]
     if '.deps' in state
       ext = '.selected'
@@ -547,6 +551,7 @@ define 'planfile', (exports, root) ->
                 found = items
             else
               break
+        subtags = {}
         if found
           if deps
             collect = {}
@@ -554,15 +559,25 @@ define 'planfile', (exports, root) ->
               getDeps(id, repo.planfiles, collect)
             found = (id for id, _ of collect)
           countShowing = 0
+          planfiles = repo.planfiles
           for id in found
             countShowing += 1
             show $planfiles[id]
+            for t in planfiles[id].tags
+              subtags[tagNorm[t]] = 1
+        for _, control of $controlWraps
+          if subtags[ctag = control.tag] or ctag in state
+            show control
+          else
+            hide control
         updateCounter()
         return
     else
       hideEditor()
     if $root
       show $root
+    for _, control of $controlWraps
+      show control
     for _, planfile of $planfiles
       show planfile
     countShowing = countTotal

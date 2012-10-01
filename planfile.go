@@ -590,7 +590,7 @@ func (r *Repo) UpdateOrdering() {
 			if pf.Title == "" {
 				extra = append(extra, listing{id, id})
 			} else {
-				extra = append(extra, listing{id, pf.Title})
+				extra = append(extra, listing{id, strings.ToLower(pf.Title)})
 			}
 		}
 	}

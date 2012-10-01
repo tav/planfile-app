@@ -355,7 +355,10 @@ type Repo struct {
 	Tags      []string             `json:"tags"`
 	Title     string               `json:"title"`
 	Updated   time.Time            `json:"updated"`
+	baseOrder []string
 	info      *RepoInfo
+	path2id   map[string]string
+	path2plan map[string]bool
 }
 
 func (r *Repo) Exists(path string) bool {
@@ -372,7 +375,6 @@ func (r *Repo) Exists(path string) bool {
 }
 
 func (r *Repo) Load() error {
-	log.Info("load start: %s", time.Now())
 	log.Info("loading repo: %s", r.Path)
 	url := "https://github.com/" + r.Path + "/tarball/master"
 	resp, err := httpClient.Get(url)
@@ -391,6 +393,8 @@ func (r *Repo) Load() error {
 	planfiles := map[string]*Planfile{}
 	order := []string{}
 	sections := map[string]*Planfile{}
+	path2id := map[string]string{}
+	path2plan := map[string]bool{}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -418,12 +422,16 @@ func (r *Repo) Load() error {
 				sections["/"] = pf
 			} else if section != "" {
 				sections[section] = pf
+				path2id[filename+".md"] = section
+				path2plan[filename+".md"] = false
 			} else {
 				if id == "" {
 					log.Error("ID not found for: %s", filename)
 					id = filename
 				}
 				planfiles[id] = pf
+				path2id[filename+".md"] = id
+				path2plan[filename+".md"] = true
 			}
 			for _, username := range userRefs {
 				if _, ok := avatars[username]; !ok {
@@ -448,60 +456,58 @@ func (r *Repo) Load() error {
 		}
 	}
 	log.Info("post-processing repo: %s", r.Path)
-	tagMap := map[string][]string{}
-	for id, f := range planfiles {
-		for _, tag := range f.Tags {
-			tagMap[tag] = append(tagMap[tag], id)
-		}
-	}
-	for section, _ := range sections {
-		if _, ok := tagMap[section]; !ok && section != "/" {
-			tagMap[section] = []string{}
-		}
-	}
-	i := 0
-	tags := make([]string, len(tagMap))
-	for tag, tagList := range tagMap {
-		sort.StringSlice(tagList).Sort()
-		tags[i] = tag
-		i += 1
-	}
-	sort.StringSlice(tags).Sort()
-	ordering := []string{}
+	baseOrder := []string{}
 	for _, id := range order {
 		if _, ok := planfiles[id]; ok {
-			ordering = append(ordering, id)
+			baseOrder = append(baseOrder, id)
 		}
 	}
-	extra := listings{}
-	for id, _ := range planfiles {
-		if !contains(ordering, id) {
-			pf := planfiles[id]
-			if pf.Title == "" {
-				extra = append(extra, listing{id, id})
-			} else {
-				extra = append(extra, listing{id, pf.Title})
-			}
-		}
-	}
-	sort.Sort(extra)
-	for _, elem := range extra {
-		ordering = append(ordering, elem.id)
-	}
+	r.baseOrder = baseOrder
 	r.Avatars = avatars
-	r.Ordering = ordering
 	r.Planfiles = planfiles
 	r.Sections = sections
-	r.TagMap = tagMap
-	r.Tags = tags
 	r.info = nil
+	r.path2id = path2id
+	r.path2plan = path2plan
+	r.UpdateOrdering()
+	r.UpdateTags()
 	log.Info("successfully loaded repo: %s", r.Path)
-	log.Info("load end: %s", time.Now())
 	return nil
 }
 
+func (r *Repo) RefreshSingle(path string, content []byte, update bool) {
+	pf, id, section, _, ok := NewPlanfile(path, content)
+	if !ok {
+		return
+	}
+	if update {
+		if isPlan, ok := r.path2plan[path]; ok {
+			if isPlan {
+				delete(r.Sections, r.path2id[path])
+			} else {
+				delete(r.Planfiles, r.path2id[path])
+			}
+			delete(r.path2id, path)
+			delete(r.path2plan, path)
+		}
+	}
+	if strings.ToLower(path) == "readme.md" {
+		r.Sections["/"] = pf
+	} else if section != "" {
+		r.Sections[section] = pf
+		r.path2id[path] = section
+		r.path2plan[path] = false
+	} else {
+		r.Planfiles[id] = pf
+		r.path2id[path] = id
+		r.path2plan[path] = true
+	}
+	r.info = nil
+	r.UpdateOrdering()
+	r.UpdateTags()
+}
+
 func (r *Repo) Modify(ctx *Context, path, content, message string) error {
-	log.Info("mod start: %s", time.Now())
 	tree := &CommitTree{}
 	if err := ctx.Call("/repos/"+r.Path+"/git/trees", tree, &TreeUpdate{
 		Base: r.info.Tree,
@@ -537,14 +543,11 @@ func (r *Repo) Modify(ctx *Context, path, content, message string) error {
 	if ref.Object.SHA == "" {
 		return errors.New("couldn't update master on github: " + path)
 	}
-	log.Info("mod end: %s", time.Now())
 	return nil
 }
 
 func (r *Repo) UpdateInfo() error {
-	log.Info("update start: %s", time.Now())
 	if r.info != nil {
-		log.Info("update end1: %s", time.Now())
 		return nil
 	}
 	master := &Ref{}
@@ -577,8 +580,50 @@ func (r *Repo) UpdateInfo() error {
 		Files:  files,
 		Tree:   commit.Tree.SHA,
 	}
-	log.Info("update end2: %s", time.Now())
 	return nil
+}
+
+func (r *Repo) UpdateOrdering() {
+	extra := listings{}
+	for id, pf := range r.Planfiles {
+		if !contains(r.baseOrder, id) {
+			if pf.Title == "" {
+				extra = append(extra, listing{id, id})
+			} else {
+				extra = append(extra, listing{id, pf.Title})
+			}
+		}
+	}
+	sort.Sort(extra)
+	r.Ordering = make([]string, 0, len(r.baseOrder)+len(extra))
+	copy(r.Ordering, r.baseOrder)
+	for _, elem := range extra {
+		r.Ordering = append(r.Ordering, elem.id)
+	}
+}
+
+func (r *Repo) UpdateTags() {
+	tagMap := map[string][]string{}
+	for id, f := range r.Planfiles {
+		for _, tag := range f.Tags {
+			tagMap[tag] = append(tagMap[tag], id)
+		}
+	}
+	for section, _ := range r.Sections {
+		if _, ok := tagMap[section]; !ok && section != "/" {
+			tagMap[section] = []string{}
+		}
+	}
+	i := 0
+	tags := make([]string, len(tagMap))
+	for tag, tagList := range tagMap {
+		sort.StringSlice(tagList).Sort()
+		tags[i] = tag
+		i += 1
+	}
+	sort.StringSlice(tags).Sort()
+	r.TagMap = tagMap
+	r.Tags = tags
 }
 
 type Commit struct {
@@ -672,6 +717,9 @@ func main() {
 	title := opts.StringConfig("title", "Planfile",
 		"the title for the web app [Planfile]")
 
+	refreshOpt := opts.IntConfig("refresh-interval", 1,
+		"the number of through-the-web edits before a full refresh [1]")
+
 	debug, instanceDirectory, _, logPath = runtime.DefaultOpts("planfile", opts, os.Args)
 
 	service := &oauth.OAuthService{
@@ -702,6 +750,9 @@ func main() {
 	if err != nil {
 		runtime.StandardError(err)
 	}
+
+	refreshCount := 0
+	refreshInterval := *refreshOpt
 
 	secret := readFile(*cookieKeyFile)
 	newContext := func(w http.ResponseWriter, r *http.Request) *Context {
@@ -810,6 +861,16 @@ func main() {
 
 	savedFooter := []byte(`"</script><script src=/.static/` + assets["planfile.js"] + `></script>`)
 
+	exportRepo := func(ctx *Context) bool {
+		repo.Updated = time.Now().UTC()
+		repoJSON, err = json.Marshal(repo)
+		if err != nil {
+			ctx.Error("Couldn't encode repo data during refresh", err)
+			return false
+		}
+		return true
+	}
+
 	refresh := func(ctx *Context) {
 		err := repo.Load()
 		if err != nil {
@@ -817,12 +878,7 @@ func main() {
 			ctx.Write([]byte("ERROR: " + err.Error()))
 			return
 		}
-		repo.Updated = time.Now().UTC()
-		repoJSON, err = json.Marshal(repo)
-		if err != nil {
-			ctx.Error("Couldn't encode repo data during refresh", err)
-			return
-		}
+		exportRepo(ctx)
 	}
 
 	saveItem := func(ctx *Context, update bool) {
@@ -862,12 +918,11 @@ func main() {
 		if ctx.FormValue("section") == "on" {
 			if id != "/" {
 				content = fmt.Sprintf(`---
-id: %s
 section: %s
 title: %s
 ---
 
-%s`, id, tags, title, content)
+%s`, tags, title, content)
 				if len(tags) > 0 {
 					if tags[0] == '#' {
 						if len(tags) > 1 {
@@ -906,7 +961,15 @@ title: %s
 			}
 			return
 		}
-		refresh(ctx)
+		refreshCount++
+		if refreshCount%refreshInterval == 0 {
+			refresh(ctx)
+		} else {
+			repo.RefreshSingle(path, []byte(content), update)
+			if !exportRepo(ctx) {
+				return
+			}
+		}
 		ctx.Write(savedHeader)
 		ctx.Write([]byte(html.EscapeString(redir)))
 		ctx.Write(savedFooter)

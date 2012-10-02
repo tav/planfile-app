@@ -258,7 +258,7 @@ type Planfile struct {
 	Title    string   `json:"title"`
 }
 
-func NewPlanfile(path string, content []byte) (p *Planfile, id string, section string, users []string, ok bool) {
+func NewPlanfile(path string, content []byte) (p *Planfile, id string, summary bool, users []string, ok bool) {
 	var metadata []byte
 	if len(content) >= 4 && bytes.HasPrefix(content, tripleDash) {
 		s := bytes.SplitN(content[4:], tripleDash, 2)
@@ -311,8 +311,6 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 						}
 					}
 				}
-			case "section":
-				section = string(v)
 			case "title":
 				p.Title = string(v)
 			}
@@ -325,7 +323,11 @@ func NewPlanfile(path string, content []byte) (p *Planfile, id string, section s
 		log.Error("couldn't render %s: %s", path, err)
 		return
 	}
-	if section == "" && p.Status == "" {
+	if strings.HasPrefix(path, "summary.") {
+		summary = true
+		split := strings.Split(path, ".")
+		id = strings.Join(split[1:len(split)-1], ".")
+	} else if p.Status == "" {
 		p.Status = "TODO"
 		p.Tags = append(p.Tags, "TODO")
 	}
@@ -346,19 +348,19 @@ func (s listings) Less(i, j int) bool { return s[i].title < s[j].title }
 func (s listings) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 type Repo struct {
-	Avatars   map[string]string    `json:"avatars"`
-	Ordering  []string             `json:"ordering"`
-	Planfiles map[string]*Planfile `json:"planfiles"`
-	Sections  map[string]*Planfile `json:"sections"`
-	Path      string               `json:"path"`
-	TagMap    map[string][]string  `json:"tagmap"`
-	Tags      []string             `json:"tags"`
-	Title     string               `json:"title"`
-	Updated   time.Time            `json:"updated"`
-	baseOrder []string
-	info      *RepoInfo
-	path2id   map[string]string
-	path2plan map[string]bool
+	Avatars      map[string]string    `json:"avatars"`
+	Ordering     []string             `json:"ordering"`
+	Planfiles    map[string]*Planfile `json:"planfiles"`
+	Path         string               `json:"path"`
+	TagMap       map[string][]string  `json:"tag_map"`
+	TagSummaries map[string]*Planfile `json:"tag_summaries"`
+	Tags         []string             `json:"tags"`
+	Title        string               `json:"title"`
+	Updated      time.Time            `json:"updated"`
+	baseOrder    []string
+	info         *RepoInfo
+	path2id      map[string]string
+	path2plan    map[string]bool
 }
 
 func (r *Repo) Exists(path string) bool {
@@ -392,7 +394,7 @@ func (r *Repo) Load() error {
 	avatars := map[string]string{}
 	planfiles := map[string]*Planfile{}
 	order := []string{}
-	sections := map[string]*Planfile{}
+	summaries := map[string]*Planfile{}
 	path2id := map[string]string{}
 	path2plan := map[string]bool{}
 	for {
@@ -414,15 +416,15 @@ func (r *Repo) Load() error {
 				log.Error("reading tarball file %q: %s", hdr.Name, err)
 				continue
 			}
-			pf, id, section, userRefs, ok := NewPlanfile(filename+".md", data)
+			pf, id, summary, userRefs, ok := NewPlanfile(filename+".md", data)
 			if !ok {
 				continue
 			}
 			if strings.ToLower(filename) == "readme" {
-				sections["/"] = pf
-			} else if section != "" {
-				sections[section] = pf
-				path2id[filename+".md"] = section
+				summaries["/"] = pf
+			} else if summary {
+				summaries[id] = pf
+				path2id[filename+".md"] = id
 				path2plan[filename+".md"] = false
 			} else {
 				if id == "" {
@@ -465,7 +467,7 @@ func (r *Repo) Load() error {
 	r.baseOrder = baseOrder
 	r.Avatars = avatars
 	r.Planfiles = planfiles
-	r.Sections = sections
+	r.TagSummaries = summaries
 	r.info = nil
 	r.path2id = path2id
 	r.path2plan = path2plan
@@ -476,26 +478,26 @@ func (r *Repo) Load() error {
 }
 
 func (r *Repo) RefreshSingle(path string, content []byte, update bool) {
-	pf, id, section, _, ok := NewPlanfile(path, content)
+	pf, id, summary, _, ok := NewPlanfile(path, content)
 	if !ok {
 		return
 	}
 	if update {
 		if isPlan, ok := r.path2plan[path]; ok {
 			if isPlan {
-				delete(r.Sections, r.path2id[path])
-			} else {
 				delete(r.Planfiles, r.path2id[path])
+			} else {
+				delete(r.TagSummaries, r.path2id[path])
 			}
 			delete(r.path2id, path)
 			delete(r.path2plan, path)
 		}
 	}
 	if strings.ToLower(path) == "readme.md" {
-		r.Sections["/"] = pf
-	} else if section != "" {
-		r.Sections[section] = pf
-		r.path2id[path] = section
+		r.TagSummaries["/"] = pf
+	} else if summary {
+		r.TagSummaries[id] = pf
+		r.path2id[path] = id
 		r.path2plan[path] = false
 	} else {
 		r.Planfiles[id] = pf
@@ -607,11 +609,6 @@ func (r *Repo) UpdateTags() {
 	for id, f := range r.Planfiles {
 		for _, tag := range f.Tags {
 			tagMap[tag] = append(tagMap[tag], id)
-		}
-	}
-	for section, _ := range r.Sections {
-		if _, ok := tagMap[section]; !ok && section != "/" {
-			tagMap[section] = []string{}
 		}
 	}
 	i := 0
@@ -915,22 +912,18 @@ func main() {
 		tags := ctx.FormValue("tags")
 		title := ctx.FormValue("title")
 		redir := "/"
-		if ctx.FormValue("section") == "on" {
+		if ctx.FormValue("summary") == "yes" {
 			if id != "/" {
 				content = fmt.Sprintf(`---
-section: %s
 title: %s
 ---
 
-%s`, tags, title, content)
-				if len(tags) > 0 {
-					if tags[0] == '#' {
-						if len(tags) > 1 {
-							redir = "/" + tags[1:]
-						}
-					} else {
-						redir = "/" + tags
-					}
+%s`, title, content)
+				if strings.HasPrefix(id, "summary.") {
+					redir = "/" + id[8:]
+				} else {
+					// Shouldn't ever happen. But just in case...
+					redir = "/" + id
 				}
 			}
 		} else {

@@ -147,6 +147,21 @@ textarea, input[type=text]
     .content
       margin-left: 140px
 
+      a.summary
+        background: #fff
+        border-radius: 3px
+        color: #fff
+        font-size: 14px
+        margin-right: 10px
+        padding: 8px 12px
+        text-decoration: none
+
+      &:hover
+        a.summary
+          background: $green
+          &:hover
+            background: $lightgreen
+
     .tags
       clear: left
       font-size: 12px
@@ -277,6 +292,9 @@ textarea, input[type=text]
   text-align: right
   width: 120px
 
+.summary-title
+  margin-left: 138px
+
 .tag
   background: #696969
   color: #fff
@@ -290,7 +308,7 @@ textarea, input[type=text]
   background: #505050
   color: #fff
 
-.title
+.title, .summary-title
   font-family: Coustard
   font-size: 16px
   font-weight: 400

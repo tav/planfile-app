@@ -37,11 +37,11 @@ define 'planfile', (exports, root) ->
   tagTypes = {}
 
   $counter = $counterWrap = $dep = $editor = $form = $loader = $main = $preview = $root = null
-  $formContent = $formID = $formPath = $formSection = $formTags = $formTitle = $formXSRF = null
+  $formContent = $formID = $formPath = $formSummary = $formTags = $formTitle = $formXSRF = null
   $controls = {}
   $controlWraps = {}
   $planfiles = {}
-  $sections = {}
+  $summaries = {}
 
   [ANALYTICS_HOST, ANALYTICS_ID, repo, username, avatar, xsrf, isAuth] = root.DATA
   siteTitle = repo.title
@@ -84,28 +84,27 @@ define 'planfile', (exports, root) ->
         evt.preventDefault()
       updateState [".item.#{id}"]
 
-  getEditor = (id, path, title, content, tags, action, isSection, viaPop) ->
+  getEditor = (id, path, title, content, tags, action, isSummary, viaPop) ->
     (evt) ->
       hideSelect() if selectOn
       if not viaPop
         state.push '.editor'
         state.sort()
         history.pushState state, siteTitle, '/.editor'
+      if (not isSummary) and tags is ''
+        tags = 'TODO'
       $form.action = action
       $formContent.value = original[0] = content
       $formID.value = id
       $formPath.value = path
       $formTags.value = original[1] = tags
       $formTitle.value = original[2] = title
-      if isSection
-        $formSection.checked = true
-        $formTags.placeholder = 'Overview for Tag:'
-        if id is '/'
-          $formTags.value = original[1] = 'README'
-          $formTitle.value = original[2] = 'README'
+      if isSummary
+        $formSummary.value = 'yes'
+        hide $formTags
       else
-        $formSection.checked = false
-        $formTags.placeholder = 'Tags'
+        $formSummary.value = ''
+        show $formTags
       $preview.innerHTML = ''
       doc.onkeydown = escape
       doc.onkeyup = null
@@ -392,8 +391,7 @@ define 'planfile', (exports, root) ->
             ['input', type: 'submit', onclick: submitForm, value: 'Save'],
           ]
     padtop = append ['div.padtop']
-    $formSection = domly ['input', type: 'checkbox', id: 'f0', name: 'section', onclick: swapTagMode(), checked: ''], padtop, true
-    domly ['label', for: 'f0', ' Section'], padtop
+    $formSummary = domly ['input', type: 'hidden', name: 'summary', value: ''], padtop, true
     $loader = domly ['span.loader'], padtop, true
     domly ['div.clear'], $editor
     $preview = domly ['div.preview'], $editor, true
@@ -404,19 +402,28 @@ define 'planfile', (exports, root) ->
     selectInfo['edit'] = selects = []
     goSelects = selectInfo['go']
     $entries = domly ['div.entries'], $main, true
-    for id, pf of repo.sections
+    tag_summaries = repo.tag_summaries
+    for id, pf of tag_summaries
       if id is '/'
         selectID = 'README'
         entry = $root = domly ['div.entry'], $entries, true
         setInnerHTML entry, pf.rendered, 'content'
       else
         selectID = id
-        entry = $sections[tagNorm[id]] = domly ['div.entry'], $entries, true
+        entry = $summaries[id] = domly ['div.entry'], $entries, true
+        if pf.title
+          domly ['div.summary-title', pf.title], entry, true
         setInnerHTML entry, pf.rendered, 'content'
-      editor = getEditor(id, pf.path, pf.title, pf.content, id, '/.modify', true)
+      editor = getEditor(id, pf.path, pf.title, pf.content, '', '/.modify', true)
       if isAuth
         domly ['div.tags', ['a.edit', href: '/.editor', onclick: editor, 'Edit']], entry
-      selects.push ["Section: #{selectID}", editor]
+      selects.push ["Summary: #{selectID}", editor]
+    if isAuth
+      for _, wrap of $controlWraps
+        if not tag_summaries[tag = wrap.tag]
+          editor = getEditor("summary.#{tag}", "summary.#{tag}.md", '', '', '', '/.new', true)
+          elem = ['a.summary', href: '/.editor', onclick: editor, "+ Add summary for #{normTag[tag]}"]
+          $summaries[tag] = domly ['div.entry', ['div.content', elem]], $entries, true
     planfiles = repo.planfiles
     for id in repo.ordering
       pf = repo.planfiles[id]
@@ -503,8 +510,8 @@ define 'planfile', (exports, root) ->
       for _, control of $controls
         control.className = ''
       $dep.className = ''
-    for _, section of $sections
-      hide section
+    for _, summary of $summaries
+      hide summary
     for _, planfile of $planfiles
       hide planfile
     if l = s.length
@@ -517,7 +524,7 @@ define 'planfile', (exports, root) ->
       if l = s.length
         if s[0] is '.editor'
           if ls['id']?
-            getEditor(ls['id'], ls['path'], ls['title'], ls['content'], ls['tags'], ls['action'], ls['section'] is '1', true)()
+            getEditor(ls['id'], ls['path'], ls['title'], ls['content'], ls['tags'], ls['action'], ls['summary'] is 'yes', true)()
           else
             getEditor('', '', '', '', '', '/.new', false, true)()
           s = s.slice 1, l
@@ -534,17 +541,17 @@ define 'planfile', (exports, root) ->
               found = [id]
               countShowing = 1
           else if $controls[tag]
-            if $sections[tag]
-              show $sections[tag]
+            if $summaries[tag]
+              show $summaries[tag]
             if setControls
               $controls[tag].className = 'selected'
-            found = repo.tagmap[normTag[tag]]
+            found = repo.tag_map[normTag[tag]]
         else
-          tagmap = repo.tagmap
+          tag_map = repo.tag_map
           for norm in s
             if setControls and (control = $controls[norm])
               control.className = 'selected'
-            if items = tagmap[normTag[norm]]
+            if items = tag_map[normTag[norm]]
               if found
                 found = intersect items, found
               else
@@ -665,10 +672,7 @@ define 'planfile', (exports, root) ->
     ls['tags'] = $formTags.value
     ls['title'] = $formTitle.value
     ls['action'] = $form.action
-    if $formSection.checked
-      ls['section'] = '1'
-    else
-      ls['section'] = '0'
+    ls['summary'] = $formSummary.value
     i = 1
     t = 'SAVING '
     indicator = ->
@@ -679,13 +683,6 @@ define 'planfile', (exports, root) ->
       i++
       $loader.innerHTML = t
     setInterval indicator, 100
-
-  swapTagMode = ->
-    ->
-      if $formSection.checked
-        $formTags.placeholder = 'Overview for Tag:'
-      else
-        $formTags.placeholder = 'Tags'
 
   updateCounter = ->
     if countTotal is countShowing
@@ -719,8 +716,8 @@ define 'planfile', (exports, root) ->
     if state.length
       renderState state, true
     else
-      for _, section of $sections
-        hide section
+      for _, summary of $summaries
+        hide summary
     show body
 
   root.onpopstate = (e) ->

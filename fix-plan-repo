@@ -30,6 +30,8 @@ for filename in listing[:]:
 		continue
 	if filename.lower() == "readme.md":
 		continue
+	if filename.startswith('summary.'):
+		continue
 	filepath = join(path, filename)
 	if not isfile(filepath):
 		continue
@@ -50,8 +52,6 @@ for filename in listing[:]:
 			continue
 		k, v = line.split(':', 1)
 		data[k] = v.strip()
-	if 'section' in data:
-		continue
 	if 'title' not in data:
 		print
 		print "! SKIPPING (no title):", filename
@@ -60,13 +60,10 @@ for filename in listing[:]:
 	id = replace_title('-', data['title'].lower())
 	if id != data.get('id', ''):
 		print "# fixing id: %r -> %r" % (data.get('id'), id)
+		data['id'] = id
 		lines = ['---']
 		for k in sorted(data):
-			if k == 'id':
-				v = id
-			else:
-				v = data[k]
-			lines.append("%s: %s" % (k, v))
+			lines.append("%s: %s" % (k, data[k]))
 		lines.append('---\n\n')
 		file = open(filepath, 'wb')
 		file.write(replace_meta('\n'.join(lines), content))

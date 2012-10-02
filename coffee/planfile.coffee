@@ -305,10 +305,11 @@ define 'planfile', (exports, root) ->
             if j is selectCount
               break
           i++
-        while j < selectCount
-          hide $selectResults[j]
-          j++
-        show $selectWrap
+        if j
+          while j < selectCount
+            hide $selectResults[j]
+            j++
+          show $selectWrap
       else
         selectResults = []
 

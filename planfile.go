@@ -47,6 +47,8 @@ var (
 	TreeNotFound   = errors.New("couldn't find the tree for the master branch")
 )
 
+type githubCallFunc func(string, interface{}) error
+
 type Context struct {
 	r      *http.Request
 	w      http.ResponseWriter
@@ -113,6 +115,12 @@ func (ctx *Context) Call(path string, v interface{}, post interface{}, patch boo
 	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(v)
 	return err
+}
+
+func (ctx *Context) CreateCallGithub() githubCallFunc {
+	return func(path string, v interface{}) error {
+		return ctx.Call(path, v, nil, false)
+	}
 }
 
 func (ctx *Context) Error(s string, err error) {
@@ -201,7 +209,7 @@ func (w GzipWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
-func callGithub(path string, v interface{}) error {
+func callGithubAnon(path string, v interface{}) error {
 	req, err := http.NewRequest("GET", "https://api.github.com"+path, nil)
 	if err != nil {
 		return err
@@ -258,7 +266,7 @@ type Planfile struct {
 	Title    string   `json:"title"`
 }
 
-func NewPlanfile(path string, content []byte) (p *Planfile, id string, summary bool, users []string, ok bool) {
+func NewPlanfile(path string, content []byte, callGithub githubCallFunc) (p *Planfile, id string, summary bool, users []string, ok bool) {
 	var metadata []byte
 	if len(content) >= 4 && bytes.HasPrefix(content, tripleDash) {
 		s := bytes.SplitN(content[4:], tripleDash, 2)
@@ -376,7 +384,7 @@ func (r *Repo) Exists(path string) bool {
 	return false
 }
 
-func (r *Repo) Load() error {
+func (r *Repo) Load(callGithub githubCallFunc) error {
 	log.Info("loading repo: %s", r.Path)
 	url := "https://github.com/" + r.Path + "/tarball/master"
 	resp, err := httpClient.Get(url)
@@ -416,7 +424,7 @@ func (r *Repo) Load() error {
 				log.Error("reading tarball file %q: %s", hdr.Name, err)
 				continue
 			}
-			pf, id, summary, userRefs, ok := NewPlanfile(filename+".md", data)
+			pf, id, summary, userRefs, ok := NewPlanfile(filename+".md", data, callGithub)
 			if !ok {
 				continue
 			}
@@ -477,8 +485,8 @@ func (r *Repo) Load() error {
 	return nil
 }
 
-func (r *Repo) RefreshSingle(path string, content []byte, update bool) {
-	pf, id, summary, _, ok := NewPlanfile(path, content)
+func (r *Repo) RefreshSingle(path string, content []byte, update bool, callGithub githubCallFunc) {
+	pf, id, summary, _, ok := NewPlanfile(path, content, callGithub)
 	if !ok {
 		return
 	}
@@ -548,7 +556,7 @@ func (r *Repo) Modify(ctx *Context, path, content, message string) error {
 	return nil
 }
 
-func (r *Repo) UpdateInfo() error {
+func (r *Repo) UpdateInfo(callGithub githubCallFunc) error {
 	if r.info != nil {
 		return nil
 	}
@@ -736,7 +744,7 @@ func main() {
 	mutex := sync.RWMutex{}
 	repo := &Repo{Path: *repository}
 
-	err := repo.Load()
+	err := repo.Load(callGithubAnon)
 	if err != nil {
 		runtime.Exit(1)
 	}
@@ -869,7 +877,7 @@ func main() {
 	}
 
 	refresh := func(ctx *Context) {
-		err := repo.Load()
+		err := repo.Load(ctx.CreateCallGithub())
 		if err != nil {
 			log.Error("couldn't rebuild planfile info: %s", err)
 			ctx.Write([]byte("ERROR: " + err.Error()))
@@ -889,7 +897,7 @@ func main() {
 			ctx.Write(notAuthorised)
 			return
 		}
-		err := repo.UpdateInfo()
+		err := repo.UpdateInfo(ctx.CreateCallGithub())
 		if err != nil {
 			ctx.Error("Couldn't update repo info", err)
 			return
@@ -958,7 +966,7 @@ title: %s
 		if refreshCount%refreshInterval == 0 {
 			refresh(ctx)
 		} else {
-			repo.RefreshSingle(path, []byte(content), update)
+			repo.RefreshSingle(path, []byte(content), update, ctx.CreateCallGithub())
 			if !exportRepo(ctx) {
 				return
 			}

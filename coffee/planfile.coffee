@@ -11,7 +11,7 @@ define 'planfile', (exports, root) ->
   doc = root.document
   doc.$ = doc.getElementById
   body = doc.body
-  domly = amp.domly
+  domly = util.domly
   loc = root.location
   ls = root.localStorage
 

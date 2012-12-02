@@ -24,6 +24,6 @@ output.hashed: true
 output.manifest: assets.json
 
 profile.dev:
-  css.compressed: false
-  js.compressed: false
+  css.compress: false
+  js.compress: false
   output.hashed: false

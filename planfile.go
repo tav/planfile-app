@@ -4,13 +4,6 @@
 package main
 
 import (
-	"amp/crypto"
-	"amp/httputil"
-	"amp/log"
-	"amp/oauth"
-	"amp/optparse"
-	"amp/runtime"
-	"amp/tlsconf"
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
@@ -20,6 +13,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/tav/golly/crypto"
+	"github.com/tav/golly/httputil"
+	"github.com/tav/golly/log"
+	"github.com/tav/golly/oauth"
+	"github.com/tav/golly/optparse"
+	"github.com/tav/golly/runtime"
+	"github.com/tav/golly/tlsconf"
 	"html"
 	"io"
 	"io/ioutil"
@@ -295,11 +295,15 @@ func NewPlanfile(path string, content []byte, callGithub githubCallFunc) (p *Pla
 			case "id":
 				id = string(v)
 			case "tags":
+				tags := []string{}
 				for _, f := range bytes.Split(v, []byte{' '}) {
-					tag := strings.TrimRight(string(f), ",")
-					if len(tag) < 2 {
-						continue
+					for _, tag := range bytes.Split(f, []byte{','}) {
+						if len(tag) >= 2 {
+							tags = append(tags, string(tag))
+						}
 					}
+				}
+				for _, tag := range tags {
 					if tag[0] == '@' {
 						users = append(users, strings.ToLower(tag[1:]))
 					}

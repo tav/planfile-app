@@ -4,12 +4,12 @@
 package main
 
 import (
-	"amp/log"
-	"amp/runtime"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/russross/blackfriday"
+	"github.com/tav/golly/log"
+	"github.com/tav/golly/runtime"
 	"html"
 	"io"
 	"os"

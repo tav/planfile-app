@@ -482,7 +482,7 @@ define 'planfile', (exports, root) ->
       if s is '#'
         tagTypes[tag] = 'hashtag'
         norm = tag.slice 1
-      else if s is '@'
+      else if (s is '@') or (s is '+')
         tagTypes[tag] = 'user'
       else if tag.toUpperCase() is tag
         tagTypes[tag] = "state-#{tag.toLowerCase()}"

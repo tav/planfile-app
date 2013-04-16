@@ -304,7 +304,7 @@ func NewPlanfile(path string, content []byte, callGithub githubCallFunc) (p *Pla
 					}
 				}
 				for _, tag := range tags {
-					if tag[0] == '@' {
+					if tag[0] == '@' || tag[0] == '+' {
 						users = append(users, strings.ToLower(tag[1:]))
 					}
 					if tagUpper := strings.ToUpper(tag); tagUpper == tag {

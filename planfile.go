@@ -1,4 +1,4 @@
-// Public Domain (-) 2012 The Planfile App Authors.
+// Public Domain (-) 2012-2013 The Planfile App Authors.
 // See the Planfile App UNLICENSE file for details.
 
 package main
@@ -726,6 +726,9 @@ func main() {
 	title := opts.StringConfig("title", "Planfile",
 		"the title for the web app [Planfile]")
 
+	refreshKey := opts.StringConfig("refresh-key", "",
+		"key for anonymously calling refresh at /.refresh?key=<refresh-key>")
+
 	refreshOpt := opts.IntConfig("refresh-interval", 1,
 		"the number of through-the-web edits before a full refresh [1]")
 
@@ -762,6 +765,8 @@ func main() {
 
 	refreshCount := 0
 	refreshInterval := *refreshOpt
+	refreshKeySet := *refreshKey != ""
+	refreshKeyBytes := []byte(*refreshKey)
 
 	secret := readFile(*cookieKeyFile)
 	newContext := func(w http.ResponseWriter, r *http.Request) *Context {
@@ -1034,8 +1039,10 @@ title: %s
 
 	register("/.refresh", func(ctx *Context) {
 		if !ctx.IsAuthorised(repo) {
-			ctx.Write(notAuthorised)
-			return
+			if !(refreshKeySet && isEqual(refreshKeyBytes, []byte(ctx.FormValue("key")))) {
+				ctx.Write(notAuthorised)
+				return
+			}
 		}
 		mutex.Lock()
 		defer mutex.Unlock()

@@ -1,0 +1,75 @@
+#! /usr/bin/env python
+
+# Public Domain (-) 2012-2013 The Planfile App Authors.
+# See the Planfile App UNLICENSE file for details.
+
+import sys
+
+from os import listdir
+from os.path import isfile, join
+from re import compile
+
+argv = sys.argv[1:]
+if len(argv) != 3:
+	print "Usage: rename-tag <directory-path> <from-tag> <to-tag>"
+	print
+	print "    Rename a tag from the metadata of .md files in the directory"
+	print
+	sys.exit(1)
+
+path, from_tag, to_tag = argv
+listing = listdir(path)
+
+match_meta = compile('^---\s*\n((?:.|\n)+?)\n---\s*\n').match
+replace_meta = compile('^---\s*\n(?:(?:.|\n)+?)\n---\s*\n').sub
+
+for filename in listing[:]:
+	if not filename.endswith('.md'):
+		continue
+	if filename.lower() == "readme.md":
+		continue
+	if filename.startswith('summary.'):
+		continue
+	filepath = join(path, filename)
+	if not isfile(filepath):
+		continue
+	file = open(filepath, 'rb')
+	content = file.read()
+	file.close()
+	match = match_meta(content)
+	if not match:
+		print
+		print "! SKIPPING (no meta):", filename
+		print
+		continue
+	meta = match.group(1)
+	data = {}
+	for line in meta.splitlines():
+		line = line.strip()
+		if not line:
+			continue
+		k, v = line.split(':', 1)
+		data[k] = v.strip()
+	if 'tags' not in data:
+		print
+		print "! SKIPPING (no tags):", filename
+		print
+		continue
+	tags =  []
+	for _tag in data['tags'].split():
+		for tag in _tag.split(','):
+			if len(tag) > 1:
+				tags.append(tag)
+	if from_tag in tags:
+		print "# renaming tag in %r" % (filename)
+		tags.remove(from_tag)
+		if to_tag not in tags:
+			tags.append(to_tag)
+		data['tags'] = ', '.join(sorted(tags))
+		lines = ['---']
+		for k in sorted(data):
+			lines.append("%s: %s" % (k, data[k]))
+		lines.append('---\n\n')
+		file = open(filepath, 'wb')
+		file.write(replace_meta('\n'.join(lines), content))
+		file.close()

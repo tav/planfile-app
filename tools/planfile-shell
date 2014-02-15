@@ -1,0 +1,97 @@
+#! /usr/bin/env python
+
+# Public Domain (-) 2012-2014 The Planfile App Authors.
+# See the Planfile App UNLICENSE file for details.
+
+import sys
+import readline
+
+from code import InteractiveConsole
+from copy import deepcopy
+from os import listdir
+from os.path import isfile, join
+from re import compile
+
+argv = sys.argv[1:]
+if len(argv) != 1:
+	print "Usage: planfile-shell <directory-path>"
+	print
+	print "    Manipulate item metadata for planfile repos"
+	print
+	sys.exit(1)
+
+path = argv[0]
+listing = listdir(path)
+
+match_meta = compile('^---\s*\n((?:.|\n)+?)\n---\s*\n').match
+replace_meta = compile('^---\s*\n(?:(?:.|\n)+?)\n---\s*\n').sub
+
+mdata = []; append_mdata = mdata.append
+idata = {}; set_idata = idata.__setitem__
+
+for filename in listing[:]:
+	if not filename.endswith('.md'):
+		continue
+	if filename.lower() == "readme.md":
+		continue
+	if filename.startswith('summary.'):
+		continue
+	filepath = join(path, filename)
+	if not isfile(filepath):
+		continue
+	file = open(filepath, 'rb')
+	content = file.read()
+	file.close()
+	match = match_meta(content)
+	if not match:
+		print
+		print "! SKIPPING (no meta):", filename
+		print
+		continue
+	meta = match.group(1)
+	data = {}
+	for line in meta.splitlines():
+		line = line.strip()
+		if not line:
+			continue
+		k, v = line.split(':', 1)
+		data[k] = v.strip()
+	tags = []
+	if 'tags' in data:
+		for _tag in data['tags'].split():
+			for tag in _tag.split(','):
+				tag = tag.strip()
+				if len(tag) > 1:
+					tags.append(tag)
+	data['tags'] = tags
+	data['path'] = filepath
+	data['content'] = content
+	set_idata(filepath, deepcopy(data))
+	append_mdata(data)
+
+def commit(mdata=mdata):
+	updated = 0
+	for data in mdata:
+		path = data['path']
+		if idata[path] != data:
+			print "Updating:", path
+			tags = ', '.join(sorted(data['tags']))
+			lines = ['---']
+			for k in ['id', 'tags', 'title']:
+				if k == 'tags':
+					lines.append("tags: %s" % tags)
+				else:
+					lines.append("%s: %s" % (k, data[k]))
+			lines.append('---\n\n')
+			content = replace_meta('\n'.join(lines), data['content'])
+			file = open(path, 'wb')
+			file.write(content)
+			file.close()
+			updated = 1
+	if not updated:
+		print "No changes to commit."
+
+shell = InteractiveConsole({ 'commit': commit, 'meta': mdata})
+shell.interact("""--- Planfile Shell
+--- Available variables: meta, commit()
+---""")

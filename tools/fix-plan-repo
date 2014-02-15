@@ -13,8 +13,7 @@ argv = sys.argv[1:]
 if not argv:
 	print "Usage: fix-plan-repo <directory-path>"
 	print
-	print "    Converts filenames and ID metadata of .md files in the directory"
-	print "    to match the current title metadata field."
+	print "    Rename .md files in the directory to match the current title"
 	print
 	sys.exit(1)
 
@@ -58,16 +57,6 @@ for filename in listing[:]:
 		print
 		continue
 	id = replace_title('-', data['title'].lower())
-	if id != data.get('id', ''):
-		print "# fixing id: %r -> %r" % (data.get('id'), id)
-		data['id'] = id
-		lines = ['---']
-		for k in sorted(data):
-			lines.append("%s: %s" % (k, data[k]))
-		lines.append('---\n\n')
-		file = open(filepath, 'wb')
-		file.write(replace_meta('\n'.join(lines), content))
-		file.close()
 	nf = id + ".md"
 	if nf != filename:
 		if nf in listing:
@@ -77,4 +66,3 @@ for filename in listing[:]:
 		else:
 			print "# fixing filename: %r -> %r" % (filename, nf)
 			rename(filepath, join(path, nf))
-	# print filename

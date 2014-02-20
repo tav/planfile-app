@@ -1,4 +1,4 @@
-// Public Domain (-) 2012-2013 The Planfile App Authors.
+// Public Domain (-) 2012-2014 The Planfile App Authors.
 // See the Planfile App UNLICENSE file for details.
 
 package main
@@ -23,6 +23,7 @@ import (
 	"html"
 	"io"
 	"io/ioutil"
+	"launchpad.net/goyaml"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -256,18 +257,27 @@ func rsplit(s string, sep string) (string, string) {
 	return s[:i], s[i+1:]
 }
 
+type Ordering struct {
+	ID    uint64   `json:"id" yaml:"id"`
+	Items []string `json:"items" yaml:"items"`
+}
+
 type Planfile struct {
 	Content  string   `json:"content"`
-	Depends  []string `json:"depends"`
-	Path     string   `json:"path"`
+	Handle   string   `json:"handle"`
+	ID       uint64   `json:"id"`
 	Rendered string   `json:"rendered"`
 	Status   string   `json:"status"`
+	Summary  bool     `json:"summary"`
 	Tags     []string `json:"tags"`
 	Title    string   `json:"title"`
 }
 
-func NewPlanfile(path string, content []byte, callGithub githubCallFunc) (p *Planfile, id string, summary bool, users []string, ok bool) {
-	var metadata []byte
+func ParsePlanfile(path string, content []byte) (p *Planfile, users []string, ok bool) {
+	var (
+		metadata []byte
+		seenID   []byte
+	)
 	if len(content) >= 4 && bytes.HasPrefix(content, tripleDash) {
 		s := bytes.SplitN(content[4:], tripleDash, 2)
 		if len(s) == 2 {
@@ -277,8 +287,6 @@ func NewPlanfile(path string, content []byte, callGithub githubCallFunc) (p *Pla
 	}
 	p = &Planfile{
 		Content: string(content),
-		Depends: []string{},
-		Path:    path,
 		Tags:    []string{},
 	}
 	if len(metadata) > 0 {
@@ -293,7 +301,12 @@ func NewPlanfile(path string, content []byte, callGithub githubCallFunc) (p *Pla
 			}
 			switch string(bytes.TrimSpace(kv[0])) {
 			case "id":
-				id = string(v)
+				n, err := strconv.ParseUint(string(v), 10, 64)
+				if err == nil {
+					p.ID = n
+				} else {
+					seenID = v
+				}
 			case "tags":
 				tags := []string{}
 				for _, f := range bytes.Split(v, []byte{' '}) {
@@ -306,28 +319,19 @@ func NewPlanfile(path string, content []byte, callGithub githubCallFunc) (p *Pla
 				for _, tag := range tags {
 					if tag[0] == '@' || tag[0] == '+' {
 						users = append(users, strings.ToLower(tag[1:]))
-					}
-					if tagUpper := strings.ToUpper(tag); tagUpper == tag {
+					} else if tagUpper := strings.ToUpper(tag); tagUpper == tag {
 						p.Status = tag
 					} else {
 						tag = strings.ToLower(tag)
 					}
-					if strings.HasPrefix(tag, "dep:") && len(tag) > 4 {
-						tag = tag[4:]
-						if !contains(p.Depends, tag) {
-							p.Depends = append(p.Depends, tag)
-						}
-					} else {
-						if !contains(p.Tags, tag) {
-							p.Tags = append(p.Tags, tag)
-						}
+					if !contains(p.Tags, tag) {
+						p.Tags = append(p.Tags, tag)
 					}
 				}
 			case "title":
 				p.Title = string(v)
 			}
 		}
-		sort.StringSlice(p.Depends).Sort()
 		sort.StringSlice(p.Tags).Sort()
 	}
 	rendered, err := renderMarkdown(content)
@@ -336,43 +340,35 @@ func NewPlanfile(path string, content []byte, callGithub githubCallFunc) (p *Pla
 		return
 	}
 	if strings.HasPrefix(path, "summary.") {
-		summary = true
 		split := strings.Split(path, ".")
-		id = strings.Join(split[1:len(split)-1], ".")
+		p.Handle = strings.Join(split[1:len(split)-1], ".")
+		p.Summary = true
+	} else if strings.ToLower(path) == "readme.md" {
+		p.Handle = "/"
+		p.Summary = true
 	} else if p.Status == "" {
 		p.Status = "TODO"
 		p.Tags = append(p.Tags, "TODO")
 	}
-	ok = true
+	if p.ID > 0 || p.Summary {
+		ok = true
+	} else {
+		log.Error("invalid id for %s: %s", path, seenID)
+		return
+	}
 	p.Rendered = string(rendered)
 	return
 }
 
-type listing struct {
-	id    string
-	title string
-}
-
-type listings []listing
-
-func (s listings) Len() int           { return len(s) }
-func (s listings) Less(i, j int) bool { return s[i].title < s[j].title }
-func (s listings) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
 type Repo struct {
-	Avatars      map[string]string    `json:"avatars"`
-	Ordering     []string             `json:"ordering"`
-	Planfiles    map[string]*Planfile `json:"planfiles"`
-	Path         string               `json:"path"`
-	TagMap       map[string][]string  `json:"tag_map"`
-	TagSummaries map[string]*Planfile `json:"tag_summaries"`
-	Tags         []string             `json:"tags"`
-	Title        string               `json:"title"`
-	Updated      time.Time            `json:"updated"`
-	baseOrder    []string
-	info         *RepoInfo
-	path2id      map[string]string
-	path2plan    map[string]bool
+	Avatars   map[string]string    `json:"avatars"`
+	Orderings map[string]*Ordering `json:"orderings"`
+	Planfiles map[string]*Planfile `json:"planfiles"`
+	Path      string               `json:"path"`
+	Title     string               `json:"title"`
+	Updated   time.Time            `json:"updated"`
+	info      *RepoInfo
+	lastID    uint64
 }
 
 func (r *Repo) Exists(path string) bool {
@@ -403,12 +399,9 @@ func (r *Repo) Load(callGithub githubCallFunc) error {
 		return err
 	}
 	tr := tar.NewReader(zf)
-	avatars := map[string]string{}
-	planfiles := map[string]*Planfile{}
-	order := []string{}
-	summaries := map[string]*Planfile{}
-	path2id := map[string]string{}
-	path2plan := map[string]bool{}
+	r.Avatars = map[string]string{}
+	r.Orderings = map[string]*Ordering{}
+	r.Planfiles = map[string]*Planfile{}
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -420,105 +413,61 @@ func (r *Repo) Load(callGithub githubCallFunc) error {
 		}
 		filename, ext := rsplit(hdr.Name, ".")
 		_, filename = rsplit(filename, "/")
-		// Check if the file ends with .md and is not a README file.
-		if ext == "md" {
+		if ext == "md" || ext == "order" {
 			log.Info("parsing: %s", filename)
 			data, err := ioutil.ReadAll(tr)
 			if err != nil {
 				log.Error("reading tarball file %q: %s", hdr.Name, err)
 				continue
 			}
-			pf, id, summary, userRefs, ok := NewPlanfile(filename+".md", data, callGithub)
-			if !ok {
-				continue
-			}
-			if strings.ToLower(filename) == "readme" {
-				summaries["/"] = pf
-			} else if summary {
-				summaries[id] = pf
-				path2id[filename+".md"] = id
-				path2plan[filename+".md"] = false
+			if ext == "md" {
+				r.AddPlanfile(filename+".md", data, callGithub)
 			} else {
-				if id == "" {
-					log.Error("ID not found for: %s", filename)
-					id = filename
-				}
-				planfiles[id] = pf
-				path2id[filename+".md"] = id
-				path2plan[filename+".md"] = true
+				r.AddOrdering(filename+".order", data)
 			}
-			for _, username := range userRefs {
-				if _, ok := avatars[username]; !ok {
-					user := &User{}
-					err = callGithub("/users/"+username, user)
-					if err == nil {
-						avatars[username] = user.AvatarURL
-					} else {
-						log.Error("couldn't load github user info for %q: %s", username, err)
-						avatars[username] = "https://assets.github.com/images/gravatars/gravatar-140.png"
-					}
-				}
-			}
-		} else if ext == "order" && filename == "" {
-			log.Info("parsing: .order")
-			data, err := ioutil.ReadAll(tr)
-			if err != nil {
-				log.Error("reading tarball file %q: %s", hdr.Name, err)
-				continue
-			}
-			order = strings.Split(string(bytes.TrimSpace(data)), "\n")
 		}
 	}
-	log.Info("post-processing repo: %s", r.Path)
-	baseOrder := []string{}
-	for _, id := range order {
-		if _, ok := planfiles[id]; ok {
-			baseOrder = append(baseOrder, id)
-		}
-	}
-	r.baseOrder = baseOrder
-	r.Avatars = avatars
-	r.Planfiles = planfiles
-	r.TagSummaries = summaries
-	r.info = nil
-	r.path2id = path2id
-	r.path2plan = path2plan
-	r.UpdateOrdering()
-	r.UpdateTags()
 	log.Info("successfully loaded repo: %s", r.Path)
 	return nil
 }
 
-func (r *Repo) RefreshSingle(path string, content []byte, update bool, callGithub githubCallFunc) {
-	pf, id, summary, _, ok := NewPlanfile(path, content, callGithub)
+func (r *Repo) AddPlanfile(path string, content []byte, callGithub githubCallFunc) {
+	planfile, users, ok := ParsePlanfile(path, content)
 	if !ok {
 		return
 	}
-	if update {
-		if isPlan, ok := r.path2plan[path]; ok {
-			if isPlan {
-				delete(r.Planfiles, r.path2id[path])
+	for _, username := range users {
+		if _, ok := r.Avatars[username]; !ok {
+			user := &User{}
+			err := callGithub("/users/"+username, user)
+			if err == nil {
+				r.Avatars[username] = user.AvatarURL
 			} else {
-				delete(r.TagSummaries, r.path2id[path])
+				log.Error("couldn't load github user info for %q: %s", username, err)
+				r.Avatars[username] = "https://assets.github.com/images/gravatars/gravatar-140.png"
 			}
-			delete(r.path2id, path)
-			delete(r.path2plan, path)
 		}
 	}
-	if strings.ToLower(path) == "readme.md" {
-		r.TagSummaries["/"] = pf
-	} else if summary {
-		r.TagSummaries[id] = pf
-		r.path2id[path] = id
-		r.path2plan[path] = false
-	} else {
-		r.Planfiles[id] = pf
-		r.path2id[path] = id
-		r.path2plan[path] = true
-	}
+	r.Planfiles[path] = planfile
 	r.info = nil
-	r.UpdateOrdering()
-	r.UpdateTags()
+	if !planfile.Summary && planfile.ID > r.lastID {
+		r.lastID = planfile.ID
+	}
+}
+
+func (r *Repo) AddOrdering(path string, content []byte) {
+	ordering := &Ordering{}
+	err := goyaml.Unmarshal(content, ordering)
+	if err != nil {
+		log.Error("couldn't decode yaml data from %s: %s", path, err)
+		return
+	}
+	if ordering.ID == 0 {
+		log.Error("unable to decode ID from %s", path)
+		return
+	}
+	r.Orderings[path] = ordering
+	r.info = nil
 }
 
 func (r *Repo) Modify(ctx *Context, path, content, message string) error {
@@ -597,44 +546,6 @@ func (r *Repo) UpdateInfo(callGithub githubCallFunc) error {
 	return nil
 }
 
-func (r *Repo) UpdateOrdering() {
-	extra := listings{}
-	for id, pf := range r.Planfiles {
-		if !contains(r.baseOrder, id) {
-			if pf.Title == "" {
-				extra = append(extra, listing{id, id})
-			} else {
-				extra = append(extra, listing{id, strings.ToLower(pf.Title)})
-			}
-		}
-	}
-	sort.Sort(extra)
-	r.Ordering = make([]string, 0, len(r.baseOrder)+len(extra))
-	copy(r.Ordering, r.baseOrder)
-	for _, elem := range extra {
-		r.Ordering = append(r.Ordering, elem.id)
-	}
-}
-
-func (r *Repo) UpdateTags() {
-	tagMap := map[string][]string{}
-	for id, f := range r.Planfiles {
-		for _, tag := range f.Tags {
-			tagMap[tag] = append(tagMap[tag], id)
-		}
-	}
-	i := 0
-	tags := make([]string, len(tagMap))
-	for tag, tagList := range tagMap {
-		sort.StringSlice(tagList).Sort()
-		tags[i] = tag
-		i += 1
-	}
-	sort.StringSlice(tags).Sort()
-	r.TagMap = tagMap
-	r.Tags = tags
-}
-
 type Commit struct {
 	Tree *CommitTree `json:"tree"`
 }
@@ -692,7 +603,7 @@ type User struct {
 func main() {
 
 	// Define the options for the command line and config file options parser.
-	opts := optparse.Parser(
+	opts := optparse.New(
 		"Usage: planfile <config.yaml> [options]\n",
 		"planfile 0.0.1")
 
@@ -708,19 +619,19 @@ func main() {
 	httpAddr := opts.StringConfig("http-addr", ":8888",
 		"the address to bind the http server [:8888]")
 
-	oauthID := opts.StringConfig("oauth-id", "",
-		"the oauth client id for github", true)
+	oauthID := opts.Required().StringConfig("oauth-id", "",
+		"the oauth client id for github")
 
-	oauthSecret := opts.StringConfig("oauth-secret", "",
-		"the oauth client secret for github", true)
+	oauthSecret := opts.Required().StringConfig("oauth-secret", "",
+		"the oauth client secret for github")
 
 	redirectURL := opts.StringConfig("redirect-url", "/.oauth",
 		"the redirect url for handling oauth [/.oauth]")
 
-	repository := opts.StringConfig("repository", "",
-		"the username/repository on github", true)
+	repository := opts.Required().StringConfig("repository", "",
+		"the username/repository on github")
 
-	secureMode := opts.BoolConfig("secure-mode", false,
+	secureMode := opts.BoolConfig("secure-mode",
 		"enable hsts and secure cookies [false]")
 
 	title := opts.StringConfig("title", "Planfile",
@@ -732,7 +643,7 @@ func main() {
 	refreshOpt := opts.IntConfig("refresh-interval", 1,
 		"the number of through-the-web edits before a full refresh [1]")
 
-	debug, instanceDirectory, _, logPath = runtime.DefaultOpts("planfile", opts, os.Args)
+	debug, instanceDirectory, _, logPath, _ = runtime.DefaultOpts("planfile", opts, os.Args, true)
 
 	service := &oauth.OAuthService{
 		ClientID:     *oauthID,
@@ -906,7 +817,8 @@ func main() {
 			ctx.Write(notAuthorised)
 			return
 		}
-		err := repo.UpdateInfo(ctx.CreateCallGithub())
+		callGithub := ctx.CreateCallGithub()
+		err := repo.UpdateInfo(callGithub)
 		if err != nil {
 			ctx.Error("Couldn't update repo info", err)
 			return
@@ -957,11 +869,11 @@ title: %s
 			title = id
 		}
 		if update {
-			message = "Updated: " + title
+			message = "update: " + title + "."
 		} else {
-			message = "Added: " + title
+			message = "add: " + title + "."
 		}
-		log.Info("SAVE PATH: %q for ID %q", path, id)
+		log.Info("SAVE PATH: %q for %q", path, title)
 		err = repo.Modify(ctx, path, content, message)
 		if err != nil {
 			if update {
@@ -975,7 +887,7 @@ title: %s
 		if refreshCount%refreshInterval == 0 {
 			refresh(ctx)
 		} else {
-			repo.RefreshSingle(path, []byte(content), update, ctx.CreateCallGithub())
+			repo.AddPlanfile(path, []byte(content), callGithub)
 			if !exportRepo(ctx) {
 				return
 			}

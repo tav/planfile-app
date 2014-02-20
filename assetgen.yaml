@@ -1,4 +1,4 @@
-# Public Domain (-) 2012 The Planfile App Authors.
+# Public Domain (-) 2012-2014 The Planfile App Authors.
 # See the Planfile App UNLICENSE file for details.
 
 generate:
@@ -6,7 +6,7 @@ generate:
 - planfile.js:
     source: 
       - raw: |
-          // Public Domain (-) 2012 The Planfile App Authors.
+          // Public Domain (-) 2012-2014 The Planfile App Authors.
           // See the Planfile App UNLICENSE file for details.
       - https://raw.github.com/tav/jsutil/master/define.coffee
       - https://raw.github.com/tav/jsutil/master/domly.coffee
@@ -15,7 +15,7 @@ generate:
 - planfile.css:
     source: 
       - raw: |
-          /* Public Domain (-) 2012 The Planfile App Authors.
+          /* Public Domain (-) 2012-2014 The Planfile App Authors.
            * See the Planfile App UNLICENSE file for details. */
       - sass/planfile.sass
 
